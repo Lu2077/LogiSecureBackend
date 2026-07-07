@@ -34,30 +34,30 @@ graph TD
     classDef secure fill:#e1f5fe,stroke:#0288d1,stroke-width:2px;
     classDef agentic fill:#e8f5e9,stroke:#388e3c,stroke-width:2px;
 
-    %% Paso 1: Monitoreo
-    subgraph Ingesta_Datos ["Ingesta de Datos"]
+    %% Step 1: Monitoring
+    subgraph data_ingestion ["Data Ingestion"]
         A[Global APIs: GNSS, GPS, Maritime, Aviation] --> B(Live Transit Mapping)
     end
     class A external;
 
-    %% Paso 2: Detección
-    B --> C{"¿Se detecta anomalía? (Huelgas, clima, conflictos)"}
+    %% Step 2: Detection
+    B --> C{"Is an anomaly detected? (Strikes, weather, conflicts)"}
     
-    %% Paso 3: Correlación Local
+    %% Step 3: Local_Correlation
     C -- Sí --> D[Trigger Alert]
     D --> E[Query On-Premise Local DB]
     
-    subgraph Zona_Segura ["Zona Segura (Confidencial)"]
+    subgraph Safe_Zone ["Secure Zone (Confidential)"]
         E --> F[Identify Impacted Assets & Cargo]
         
-        %% Paso 4: Inferencia AMD
-        F --> G["Local Inference Engine: AMD ROCm Stack + LLM"]
+        %% Step 4: Inference AMD
+        F --> G["Local Inference Engine: AMD ROCm Stack + Google Gemma 4 (E4B / 26B MoE / 31B)"]
         G --> H[Simulate Impact & Multi-modal Routes]
     end
     class E,F,G,H secure;
 
-    %% Paso 5: Ejecución Agente vs Workflow
-    H --> I{"Tomar Decisión: Loop Agente Autónomo"}
+    %% Step 5: Agent Execution vs. Workflow
+    H --> I{"Decision Making: Autonomous Agent Loop"}
     
     I -->|Action 1| J[API Push: Updated GPS to External Operators]
     I -->|Action 2| K[Stage Draft: Client Communication Alert]
@@ -69,26 +69,38 @@ graph TD
 ```
 
 
-## Technical Prerequisites & Local Setup
+## 🛠️ Technical Prerequisites & Architecture Setup
 
-To run LogiSecure AI's autonomous inference loop locally, your workstation or on-premise server must satisfy the following hardware and software stack.
+> ⚠️ **CRITICAL TEAM NOTE (PLEASE READ BEFORE CODING):** 
+> To maximize development speed during this 5-day hackathon, **DO NOT attempt to configure full local ROCm kernel drivers on your workstations**. We will bypass local hardware barriers by routing our inference loop through cloud infrastructure (**AMD Developer Cloud / Fireworks AI Cloud Endpoints**). 
+> 
+> The hardware specifications below define our **Enterprise Production Target** (how the business sells to clients for 100% data sovereignty) and are kept here for architectural documentation and final judging presentation.
 
-### 1. Hardware Requirements
-* **GPU/Accelerator:** AMD Instinct Series (MI200, MI300, or newer) or Radeon RX 7000/9000 Series (e.g., RX 7900 XTX) with dedicated VRAM for LLM execution.
+### 🌌 1. Hackathon Development Environment (What to use NOW)
+To run the prototype on your local machine without crashes:
+* **Backend Run Mode:** In your local `.env`, set `USE_AMD_ROCM=False`. This will route model inferences safely through the **Fireworks AI Cloud API** using our shared credits.
+* **Frontend:** Standard React client running via Vite (`npm run dev`).
+* **Docker Setup:** Use the cloud-proxy configurations to test data ingestion without freezing your laptop memory.
+
+### 🏭 2. Enterprise On-Premise Production Target (For Final Client Deployment)
+Once deployed on the logistics center's physical server rack, the infrastructure must satisfy the following bare-metal hardware and software stack:
+
+#### Hardware Requirements
+* **GPU/Accelerator:** AMD Instinct Series (MI200, MI300, or newer) or Radeon RX 7000/9000 Series (e.g., RX 7900 XTX) with dedicated VRAM for isolated enterprise LLM execution.
 * **CPU:** x86_64 architecture (AVX2 instructions highly recommended).
-* **Firmware:** **Secure Boot must be disabled** or configured with custom MOK keys to allow the AMD kernel-mode module to load. 
-* **BIOS Note:** Integrated Graphics (IGP) must be **disabled** in the BIOS to prevent runtime initialization crashes with ROCm.
+* **Firmware:** Secure Boot must be disabled or configured with custom MOK keys to allow the AMD kernel-mode module to load safely.
+* **BIOS Note:** Integrated Graphics (IGP) must be disabled in the BIOS to prevent runtime initialization conflicts with ROCm layers.
 
-### 2. Host Operating System & Drivers
+#### Host Operating System & Drivers
 * **OS:** Ubuntu 24.04 LTS / 22.04 LTS or RHEL 9.x (Linux Kernel 5.15 or newer).
-* **Kernel Driver:** Install the official AMD kernel-mode driver (`amdgpu-dkms`).
-* **ROCm Stack:** **ROCm v7.1 or v7.2** (verify via `rocminfo`).
+* **Kernel Driver:** Official AMD kernel-mode driver (`amdgpu-dkms`).
+* **ROCm Stack:** ROCm v6.x / v7.x series (verify setup execution via `rocminfo`).
 
-### 3. GPU Permissions Setup (Crucial)
-By default, non-root users cannot access the GPU hardware compute layers. Run the following command on your host machine to add your local user to the video and render groups:
+#### GPU Permissions Setup (Host Workstation Only)
+By default, non-root system users cannot access raw GPU hardware compute layers. Run the following command on the target host deployment machine to add the operation user to the video and render systems:
 ```bash
-sudo usermod -a -G video,render \$USER
-# Log out and log back in for changes to take effect
+sudo usermod -a -G video,render $USER
+# Log out and log back in for kernel changes to take effect
 ```
 
 ### 4. Containerized Environment (Docker)
