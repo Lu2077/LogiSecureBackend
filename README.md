@@ -26,6 +26,7 @@ Unlike rigid, rules-based workflows (`if/else` pipelines), LogiSecure operates a
 * **Automated Dispatch:** Pushes optimized GPS coordinates to external transit operators via API.
 * **Human-in-the-loop:** Generates a pre-drafted client communication alert, staged and ready for final engineer/operator approval.
 
+
 ```mermaid
 graph TD
     %% Definición de Estilos
@@ -34,28 +35,29 @@ graph TD
     classDef agentic fill:#e8f5e9,stroke:#388e3c,stroke-width:2px;
 
     %% Paso 1: Monitoreo
-    subgraph Ingesta de Datos
+    subgraph Ingesta_Datos ["Ingesta de Datos"]
         A[Global APIs: GNSS, GPS, Maritime, Aviation] --> B(Live Transit Mapping)
     end
     class A external;
 
     %% Paso 2: Detección
-    B --> C{¿Se detecta anomalía?<br><i>Huelgas, clima, conflictos</i>}
+    B --> C{"¿Se detecta anomalía? (Huelgas, clima, conflictos)"}
     
     %% Paso 3: Correlación Local
     C -- Sí --> D[Trigger Alert]
     D --> E[Query On-Premise Local DB]
-    subgraph Zona Segura (Confidencial)
+    
+    subgraph Zona_Segura ["Zona Segura (Confidencial)"]
         E --> F[Identify Impacted Assets & Cargo]
         
         %% Paso 4: Inferencia AMD
-        F --> G[Local Inference Engine<br><b>AMD ROCm Stack + LLM</b>]
+        F --> G["Local Inference Engine: AMD ROCm Stack + LLM"]
         G --> H[Simulate Impact & Multi-modal Routes]
     end
     class E,F,G,H secure;
 
     %% Paso 5: Ejecución Agente vs Workflow
-    H --> I{Tomar Decisión<br><i>Loop Agente Autónomo</i>}
+    H --> I{"Tomar Decisión: Loop Agente Autónomo"}
     
     I -->|Action 1| J[API Push: Updated GPS to External Operators]
     I -->|Action 2| K[Stage Draft: Client Communication Alert]
@@ -65,6 +67,7 @@ graph TD
     class I,J,K agentic;
     class J external;
 ```
+
 
 ## Technical Prerequisites & Local Setup
 
