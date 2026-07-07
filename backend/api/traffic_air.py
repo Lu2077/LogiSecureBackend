@@ -10,16 +10,18 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Pre-configured coordinates of the world's most important logistics hubs.
-SEDES_DISPONIBLES = {
-    "roterdam": {"lat": 51.9225, "lon": 4.4791, "range": 2.0},  # Róterdam Roterdam (Europe)
+AVAILABLE_LOCATIONS = {
+    "roterdam": {"lat": 51.9225, "lon": 4.4791, "range": 2.0},  # Róterdam (Europe)
     "houston": {"lat": 29.7604, "lon": -95.3698, "range": 2.5}, # Logistic Hub Texas (USA)
     "sao_paulo": {"lat": -23.5505, "lon": -46.6333, "range": 2.0}, # Logistic center SaoPaulo (Brazil)
     "shanghai": {"lat": 31.2304, "lon": 121.4737, "range": 1.5}  # Shanghái port (Asia)
+    #If the user wants to try another coordinate in the demo || React sends "custom" along with the Lat/Lon marked by the user when clicking on the map 
+    "custom": {"lat": 0.0, "lon": 0.0, "range": 2.0, "type": "Custom Enterprise Node"}
 }
 
 # Cache configuration
 FLIGHTS_CACHE = {}
-CACHE_DURATION = 30  # Increased to 30 seconds for better performance
+CACHE_DURATION = 30  # 30 seconds for optimal hackathon performance
 MAX_RETRIES = 3
 RETRY_DELAY = 1  # seconds
 
@@ -31,13 +33,13 @@ CARGO_PATTERNS = {
 
 def validate_hq(hq_name: str) -> bool:
     """Validate if HQ exists in configuration"""
-    return hq_name in SEDES_DISPONIBLES
+    return hq_name.lower() in AVAILABLE_LOCATIONS
 
 def get_hq_coordinates(hq_name: str) -> Optional[Dict[str, float]]:
     """Get HQ coordinates and range"""
     if not validate_hq(hq_name):
         return None
-    return SEDES_DISPONIBLES[hq_name]
+    return SEDES_DISPONIBLES[hq_name.lower()]
 
 def classify_flight(callsign: str) -> str:
     """Classify flight type based on callsign patterns"""
@@ -46,12 +48,10 @@ def classify_flight(callsign: str) -> str:
     
     callsign_upper = callsign.upper().strip()
     
-    # Check courier patterns
     for pattern in CARGO_PATTERNS["couriers"]:
         if callsign_upper.startswith(pattern):
             return "courier"
     
-    # Check heavy cargo patterns
     for pattern in CARGO_PATTERNS["heavy_cargo"]:
         if callsign_upper.startswith(pattern):
             return "heavy_cargo"
@@ -61,21 +61,19 @@ def classify_flight(callsign: str) -> str:
 def process_flight_data(states: List[Any]) -> Dict[str, List[Dict[str, Any]]]:
     """
     Process and classify flight data from OpenSky API
-    Returns categorized flights with enriched information
+    Returns categorized flights with enriched information for backend and UI
     """
     couriers = []
     heavy_cargo = []
     all_flights = []
     
     for flight in states:
-        # Ensure flight has minimum required fields
         if len(flight) < 11:
             continue
             
-        # Extract and clean callsign
         callsign = flight[1].strip() if flight[1] else ""
         
-        # Create enriched flight data
+        # Enriched object for internal processing / database / AI agents
         flight_info = {
             "icao24": flight[0],
             "callsign": callsign or "UNKNOWN",
@@ -96,21 +94,18 @@ def process_flight_data(states: List[Any]) -> Dict[str, List[Dict[str, Any]]]:
             "position_source": flight[16] if len(flight) > 16 else None
         }
         
-        # Add to all flights
         all_flights.append(flight_info)
-        
-        # Classify and add to appropriate categories
         flight_type = classify_flight(callsign)
         
-        # Keep simplified version for UI
+        # Safe structure for Frontend UI to prevent rendering crashes
         simplified_flight = {
             "id": flight[0],
-            "callsign": callsign,
-            "lng": flight[5],
-            "lat": flight[6],
-            "alt": flight[7],
-            "velocity": flight[9],
-            "heading": flight[10]
+            "callsign": callsign or "UNKNOWN",
+            "lng": flight[5] if flight[5] is not None else 0.0,
+            "lat": flight[6] if flight[6] is not None else 0.0,
+            "alt": flight[7] if flight[7] is not None else 0.0,
+            "velocity": flight[9] if flight[9] is not None else 0.0,
+            "heading": flight[10] if flight[10] is not None else 0.0
         }
         
         if flight_type == "courier":
@@ -133,38 +128,37 @@ def get_flights_by_company_hq(hq_name: str) -> Dict[str, Any]:
     en la ubicación operativa seleccionada por la empresa.
     """
     current_time = time.time()
+    hq_name_lower = hq_name.lower().strip()
     
-    # Validate HQ exists
-    if not validate_hq(hq_name):
+    if not validate_hq(hq_name_lower):
         return {
             "status": "error", 
             "message": f"Headquarter '{hq_name}' not configured.",
             "available_hqs": list(SEDES_DISPONIBLES.keys())
         }
     
-    hq = SEDES_DISPONIBLES[hq_name]
-    hq_name_lower = hq_name.lower()
+    hq = SEDES_DISPONIBLES[hq_name_lower]
     
-    # Check cache
+    # Check RAM Cache
     if hq_name_lower in FLIGHTS_CACHE:
         cache_entry = FLIGHTS_CACHE[hq_name_lower]
         if (current_time - cache_entry["timestamp"]) < CACHE_DURATION:
-            logger.info(f"⚡ Serving cached flight data for HQ [{hq_name}]")
+            logger.info(f"⚡ Serving cached flight data for HQ [{hq_name_lower}]")
             return {
                 "status": "success", 
-                "location": hq_name, 
+                "location": hq_name_lower, 
                 "data": cache_entry["data"],
                 "cached": True,
                 "timestamp": datetime.utcnow().isoformat()
             }
     
-    # Calculate bounding box
+    # Calculate bounding box geography
     lat_min = hq["lat"] - hq["range"]
     lon_min = hq["lon"] - hq["range"]
     lat_max = hq["lat"] + hq["range"]
     lon_max = hq["lon"] + hq["range"]
     
-    logger.info(f"📡 Querying OpenSky for HQ [{hq_name}] - BBox: ({lat_min:.2f}, {lon_min:.2f}) to ({lat_max:.2f}, {lon_max:.2f})")
+    logger.info(f"📡 Querying OpenSky for HQ [{hq_name_lower}] - BBox: ({lat_min:.2f}, {lon_min:.2f})")
     
     settings = get_settings()
     url = "https://opensky-network.org/api/states/all"
@@ -176,131 +170,62 @@ def get_flights_by_company_hq(hq_name: str) -> Dict[str, Any]:
         "lomax": lon_max
     }
     
-    # Retry logic
+    # Advanced Retry loop execution
     for attempt in range(MAX_RETRIES):
         try:
-            # Use authentication if provided, otherwise try without
             auth = None
             if settings.OPENSKY_USERNAME and settings.OPENSKY_PASSWORD:
                 auth = (settings.OPENSKY_USERNAME, settings.OPENSKY_PASSWORD)
             
-            response = requests.get(
-                url, 
-                params=params, 
-                auth=auth,
-                timeout=10
-            )
+            response = requests.get(url, params=params, auth=auth, timeout=10)
             
             if response.status_code == 200:
                 data = response.json()
                 states = data.get("states", []) or []
-                
-                # Process and classify flights
                 processed_data = process_flight_data(states)
                 
-                # Cache the result
                 FLIGHTS_CACHE[hq_name_lower] = {
                     "timestamp": current_time,
                     "data": processed_data
                 }
                 
-                logger.info(f"✅ Retrieved {processed_data['total_flights']} flights for HQ [{hq_name}]")
-                
                 return {
                     "status": "success",
-                    "location": hq_name,
+                    "location": hq_name_lower,
                     "data": processed_data,
                     "cached": False,
                     "timestamp": datetime.utcnow().isoformat()
                 }
+                
             elif response.status_code == 429:
-                # Rate limited - wait and retry
                 wait_time = RETRY_DELAY * (attempt + 1)
-                logger.warning(f"⚠️ Rate limited. Waiting {wait_time}s before retry...")
+                logger.warning(f"⚠️ Rate limited (429). Attempt {attempt+1}/{MAX_RETRIES}. Waiting {wait_time}s...")
                 time.sleep(wait_time)
                 continue
             else:
-                logger.error(f"❌ API Error {response.status_code}: {response.text[:200]}")
-                return {
-                    "status": "api_error",
-                    "message": f"OpenSky API returned status {response.status_code}",
-                    "data": {
-                        "all_flights": [],
-                        "couriers": [],
-                        "heavy_cargo": [],
-                        "total_flights": 0
-                    }
-                }
+                logger.error(f"❌ API Error {response.status_code}")
+                break
                 
-        except requests.exceptions.Timeout:
-            logger.warning(f"⚠️ Timeout attempt {attempt + 1}/{MAX_RETRIES}")
+        except requests.exceptions.RequestException as e:
+            logger.error(f"❌ Network request exception on attempt {attempt+1}: {e}")
             if attempt < MAX_RETRIES - 1:
                 time.sleep(RETRY_DELAY)
-                continue
-            else:
-                return {
-                    "status": "network_error",
-                    "message": "Timeout connecting to OpenSky API",
-                    "data": {
-                        "all_flights": [],
-                        "couriers": [],
-                        "heavy_cargo": [],
-                        "total_flights": 0
-                    }
-                }
-        except Exception as e:
-            logger.error(f"❌ Unexpected error: {str(e)}")
-            return {
-                "status": "network_error",
-                "message": f"Error fetching flight data: {str(e)}",
-                "data": {
-                    "all_flights": [],
-                    "couriers": [],
-                    "heavy_cargo": [],
-                    "total_flights": 0
-                }
-            }
-    
-    # If we get here, all retries failed
+            continue
+
+    # Safe Fallback: Return old cache if API or network fails completely
+    if hq_name_lower in FLIGHTS_CACHE:
+        logger.warning(f"♻️ Returning expired cache fallback for HQ [{hq_name_lower}] due to API failure.")
+        return {
+            "status": "fallback_success",
+            "location": hq_name_lower,
+            "data": FLIGHTS_CACHE[hq_name_lower]["data"],
+            "cached": True,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+
     return {
-        "status": "network_error",
-        "message": "Failed to fetch flight data after multiple retries",
-        "data": {
-            "all_flights": [],
-            "couriers": [],
-            "heavy_cargo": [],
-            "total_flights": 0
-        }
+        "status": "api_error",
+        "message": "OpenSky API calls failed entirely after retries. No fallback cache available.",
+        "data": {"all_flights": [], "couriers": [], "heavy_cargo": [], "total_flights": 0, "total_couriers": 0, "total_heavy_cargo": 0}
     }
 
-def clear_flight_cache(hq_name: Optional[str] = None) -> Dict[str, Any]:
-    """Clear flight cache for specific HQ or all HQs"""
-    if hq_name:
-        hq_name_lower = hq_name.lower()
-        if hq_name_lower in FLIGHTS_CACHE:
-            del FLIGHTS_CACHE[hq_name_lower]
-            return {"status": "success", "message": f"Cache cleared for {hq_name}"}
-        else:
-            return {"status": "error", "message": f"No cache found for {hq_name}"}
-    else:
-        FLIGHTS_CACHE.clear()
-        return {"status": "success", "message": "All cache cleared"}
-
-def get_cache_stats() -> Dict[str, Any]:
-    """Get cache statistics"""
-    stats = {
-        "total_cached_hqs": len(FLIGHTS_CACHE),
-        "cached_hqs": list(FLIGHTS_CACHE.keys()),
-        "cache_ttl": CACHE_DURATION,
-        "cache_entries": {}
-    }
-    
-    for hq, entry in FLIGHTS_CACHE.items():
-        age = int(time.time() - entry["timestamp"])
-        stats["cache_entries"][hq] = {
-            "age_seconds": age,
-            "expires_in_seconds": max(0, CACHE_DURATION - age),
-            "total_flights": entry["data"].get("total_flights", 0)
-        }
-    
-    return stats
