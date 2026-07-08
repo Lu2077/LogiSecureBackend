@@ -1,6 +1,8 @@
-import time 
+import time
 from fastapi import FastAPI, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+
+from config import get_settings, get_cors_origins
 
 # 🛰️ CLEAN SYMMETRIC ARCHITECTURE IMPORTS
 from api.traffic_air import get_flights_by_company_hq
@@ -12,18 +14,37 @@ from api.global_alerts import get_incidents_by_hq
 # 🔒 CONFIDENTIAL IN-MEMORY TMS DATABASE
 from ai_agents.database import ENTERPRISE_SHIPMENTS
 
+settings = get_settings()
+
 app = FastAPI(
-    title="LogiSecure AI - Core System", 
+    title=settings.APP_NAME,
+    version=settings.APP_VERSION,
     description="Unified Enterprise Router API running securely on AMD local infrastructure"
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=get_cors_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.get("/", tags=["infra"])
+async def root():
+    """Service identity card. Lets humans and load balancers confirm what is running."""
+    return {
+        "service": settings.APP_NAME,
+        "version": settings.APP_VERSION,
+        "environment": settings.BACKEND_ENV,
+        "docs": "/docs",
+        "health": "/health",
+    }
+
+@app.get("/health", tags=["infra"])
+async def health():
+    """Liveness probe used by the Docker HEALTHCHECK and orchestrators."""
+    return {"status": "ok", "timestamp": time.time()}
 
 @app.get("/api/dashboard/sync")
 async def sync_dashboard_by_hq(hq: str = Query("roterdam")):
@@ -97,4 +118,13 @@ async def track_shipment_by_industry_id(tracking_id: str):
     else:
         land_result = get_asset_tracking_by_id(id_upper)
         return land_result
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(
+        "main:app",
+        host=settings.HOST,
+        port=settings.PORT,
+        reload=settings.BACKEND_ENV == "development",
+    )
 
