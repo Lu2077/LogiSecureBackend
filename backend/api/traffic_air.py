@@ -1,13 +1,9 @@
-import time
+# traffic_air.py
 import requests
-from typing import Dict, List, Any, Optional
+import urllib3
+import json
 from datetime import datetime
-from config import get_settings
-import logging
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+from typing import Dict, List, Any, Optional
 
 # Pre-configured coordinates of the world's most important logistics hubs.
 AVAILABLE_LOCATIONS = {
@@ -19,16 +15,17 @@ AVAILABLE_LOCATIONS = {
     "custom": {"lat": 0.0, "lon": 0.0, "range": 2.0, "type": "Custom Enterprise Node"}
 }
 
-# Cache configuration
-FLIGHTS_CACHE = {}
-CACHE_DURATION = 30  # 30 seconds for optimal hackathon performance
-MAX_RETRIES = 3
-RETRY_DELAY = 1  # seconds
+# ============================================================================
+# CONFIGURACIÓN
+# ============================================================================
+OPENSKY_BASE_URL = "https://opensky-network.org/api"
 
-# Known cargo airlines patterns for classification
-CARGO_PATTERNS = {
-    "couriers": ["DHX", "FDX", "UPS", "DHL", "FEDEX"],
-    "heavy_cargo": ["TAY", "BOX", "CLX", "GTI", "CARGOLUX", "KAL", "SIA", "CARGO"]
+# Regiones predefinidas para monitoreo
+REGIONS = {
+    "europe": {"lamin": 45.8389, "lomin": 5.9962, "lamax": 47.8229, "lomax": 10.5226},
+    "south_america": {"lamin": -33.0, "lomin": -71.0, "lamax": -30.0, "lomax": -68.0},
+    "middle_east": {"lamin": 32.0, "lomin": 34.0, "lamax": 34.0, "lomax": 36.0},
+    "asia": {"lamin": 30.0, "lomin": 120.0, "lamax": 33.0, "lomax": 123.0}
 }
 
 def validate_hq(hq_name: str) -> bool:
@@ -41,96 +38,98 @@ def get_hq_coordinates(hq_name: str) -> Optional[Dict[str, float]]:
         return None
     return AVAILABLE_LOCATIONS[hq_name.lower()]
 
-def classify_flight(callsign: str) -> str:
-    """Classify flight type based on callsign patterns"""
-    if not callsign:
-        return "unknown"
-    
-    callsign_upper = callsign.upper().strip()
-    
-    for pattern in CARGO_PATTERNS["couriers"]:
-        if callsign_upper.startswith(pattern):
-            return "courier"
-    
-    for pattern in CARGO_PATTERNS["heavy_cargo"]:
-        if callsign_upper.startswith(pattern):
-            return "heavy_cargo"
-    
-    return "unknown"
-
-def process_flight_data(states: List[Any]) -> Dict[str, List[Dict[str, Any]]]:
+def get_flights_by_region(region: str = "europe") -> Optional[Dict[str, Any]]:
     """
-    Process and classify flight data from OpenSky API
-    Returns categorized flights with enriched information for backend and UI
+    Obtiene vuelos en tiempo real de OpenSky para una región específica
+    
+    Args:
+        region: Nombre de la región (europe, south_america, middle_east, asia)
+    
+    Returns:
+        Dict con los datos de vuelos o None si falla
     """
-    couriers = []
-    heavy_cargo = []
-    all_flights = []
+    if region not in REGIONS:
+        print(f"❌ Región '{region}' no encontrada. Usando 'europe'")
+        region = "europe"
     
-    for flight in states:
-        if len(flight) < 11:
-            continue
-            
-        callsign = flight[1].strip() if flight[1] else ""
-        
-        # Enriched object for internal processing / database / AI agents
-        flight_info = {
-            "icao24": flight[0],
-            "callsign": callsign or "UNKNOWN",
-            "origin_country": flight[2] or "UNKNOWN",
-            "time_position": flight[3],
-            "last_contact": flight[4],
-            "longitude": flight[5],
-            "latitude": flight[6],
-            "baro_altitude": flight[7],
-            "on_ground": flight[8],
-            "velocity": flight[9],
-            "true_track": flight[10],
-            "vertical_rate": flight[11] if len(flight) > 11 else None,
-            "sensors": flight[12] if len(flight) > 12 else None,
-            "geo_altitude": flight[13] if len(flight) > 13 else None,
-            "squawk": flight[14] if len(flight) > 14 else None,
-            "spi": flight[15] if len(flight) > 15 else None,
-            "position_source": flight[16] if len(flight) > 16 else None
-        }
-        
-        all_flights.append(flight_info)
-        flight_type = classify_flight(callsign)
-        
-        # Safe structure for Frontend UI to prevent rendering crashes
-        simplified_flight = {
-            "id": flight[0],
-            "callsign": callsign or "UNKNOWN",
-            "lng": flight[5] if flight[5] is not None else 0.0,
-            "lat": flight[6] if flight[6] is not None else 0.0,
-            "alt": flight[7] if flight[7] is not None else 0.0,
-            "velocity": flight[9] if flight[9] is not None else 0.0,
-            "heading": flight[10] if flight[10] is not None else 0.0
-        }
-        
-        if flight_type == "courier":
-            couriers.append(simplified_flight)
-        elif flight_type == "heavy_cargo":
-            heavy_cargo.append(simplified_flight)
-    
-    return {
-        "all_flights": all_flights,
-        "couriers": couriers,
-        "heavy_cargo": heavy_cargo,
-        "total_flights": len(all_flights),
-        "total_couriers": len(couriers),
-        "total_heavy_cargo": len(heavy_cargo)
+    bounds = REGIONS[region]
+    url = f"{OPENSKY_BASE_URL}/states/all"
+    params = {
+        "lamin": bounds["lamin"],
+        "lomin": bounds["lomin"],
+        "lamax": bounds["lamax"],
+        "lomax": bounds["lomax"]
     }
+    
+    try:
+        response = requests.get(url, params=params, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            states = data.get("states", [])
+            
+            # Formatear datos para facilitar el uso
+            formatted_flights = []
+            for flight in states:
+                formatted_flights.append({
+                    "icao24": flight[0],
+                    "callsign": flight[1].strip() if flight[1] else "Unknown",
+                    "origin_country": flight[2],
+                    "time_position": flight[3],
+                    "last_contact": flight[4],
+                    "longitude": flight[5],
+                    "latitude": flight[6],
+                    "baro_altitude": flight[7],
+                    "on_ground": flight[8],
+                    "velocity": flight[9],
+                    "true_track": flight[10],
+                    "vertical_rate": flight[11],
+                    "sensors": flight[12],
+                    "geo_altitude": flight[13],
+                    "squawk": flight[14],
+                    "spi": flight[15],
+                    "position_source": flight[16]
+                })
+            
+            return {
+                "status": "success",
+                "region": region,
+                "timestamp": datetime.now().isoformat(),
+                "total_flights": len(formatted_flights),
+                "flights": formatted_flights
+            }
+        else:
+            return {
+                "status": "error",
+                "message": f"OpenSky API error: {response.status_code}"
+            }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Error conectando a OpenSky: {str(e)}"
+        }
 
 def get_flights_by_company_hq(hq_name: str) -> Dict[str, Any]:
     """
-    Captura tráfico aéreo REAL e interactivo basándose exclusivamente 
-    en la ubicación operativa seleccionada por la empresa.
-    """
-    current_time = time.time()
-    hq_name_lower = hq_name.lower().strip()
+    Obtiene vuelos cerca de una sede específica
     
-    if not validate_hq(hq_name_lower):
+    Args:
+        hq_name: Nombre de la sede (roterdam, houston, etc.)
+    
+    Returns:
+        Dict con los vuelos cercanos
+    """
+    # Mapeo de sedes a coordenadas
+    HQ_COORDINATES = {
+        "roterdam": {"lat": 51.92, "lon": 4.47},
+        "houston": {"lat": 29.76, "lon": -95.36},
+        "sao_paulo": {"lat": -23.55, "lon": -46.63},
+        "shanghai": {"lat": 31.23, "lon": 121.47},
+        "beirut": {"lat": 33.89, "lon": 35.50},
+        "santiago": {"lat": -33.45, "lon": -70.66}
+    }
+    
+    hq = hq_name.lower().strip()
+    if hq not in HQ_COORDINATES:
         return {
             "status": "error", 
             "message": f"Headquarter '{hq_name}' not configured.",
@@ -163,69 +162,84 @@ def get_flights_by_company_hq(hq_name: str) -> Dict[str, Any]:
     settings = get_settings()
     url = "https://opensky-network.org/api/states/all"
     
+    # Buscar vuelos en un radio aproximado (5 grados)
+    url = f"{OPENSKY_BASE_URL}/states/all"
     params = {
-        "lamin": lat_min,
-        "lomin": lon_min,
-        "lamax": lat_max,
-        "lomax": lon_max
+        "lamin": coord["lat"] - 5,
+        "lomin": coord["lon"] - 5,
+        "lamax": coord["lat"] + 5,
+        "lomax": coord["lon"] + 5
     }
     
-    # Advanced Retry loop execution
-    for attempt in range(MAX_RETRIES):
-        try:
-            auth = None
-            if settings.OPENSKY_USERNAME and settings.OPENSKY_PASSWORD:
-                auth = (settings.OPENSKY_USERNAME, settings.OPENSKY_PASSWORD)
+    try:
+        response = requests.get(url, params=params, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            states = data.get("states", [])
             
-            response = requests.get(url, params=params, auth=auth, timeout=10)
+            flights = []
+            for flight in states:
+                if flight[5] and flight[6]:  # Tiene coordenadas
+                    flights.append({
+                        "callsign": flight[1].strip() if flight[1] else "Unknown",
+                        "origin": flight[2],
+                        "lat": flight[6],
+                        "lng": flight[5],
+                        "altitude": flight[7],
+                        "velocity": flight[9],
+                        "on_ground": flight[8]
+                    })
             
-            if response.status_code == 200:
-                data = response.json()
-                states = data.get("states", []) or []
-                processed_data = process_flight_data(states)
-                
-                FLIGHTS_CACHE[hq_name_lower] = {
-                    "timestamp": current_time,
-                    "data": processed_data
-                }
-                
-                return {
-                    "status": "success",
-                    "location": hq_name_lower,
-                    "data": processed_data,
-                    "cached": False,
-                    "timestamp": datetime.utcnow().isoformat()
-                }
-                
-            elif response.status_code == 429:
-                wait_time = RETRY_DELAY * (attempt + 1)
-                logger.warning(f"⚠️ Rate limited (429). Attempt {attempt+1}/{MAX_RETRIES}. Waiting {wait_time}s...")
-                time.sleep(wait_time)
-                continue
-            else:
-                logger.error(f"❌ API Error {response.status_code}")
-                break
-                
-        except requests.exceptions.RequestException as e:
-            logger.error(f"❌ Network request exception on attempt {attempt+1}: {e}")
-            if attempt < MAX_RETRIES - 1:
-                time.sleep(RETRY_DELAY)
-            continue
-
-    # Safe Fallback: Return old cache if API or network fails completely
-    if hq_name_lower in FLIGHTS_CACHE:
-        logger.warning(f"♻️ Returning expired cache fallback for HQ [{hq_name_lower}] due to API failure.")
+            return {
+                "status": "success",
+                "location": hq,
+                "timestamp": datetime.now().isoformat(),
+                "total_flights": len(flights),
+                "flights": flights
+            }
+        else:
+            return {
+                "status": "error",
+                "message": f"OpenSky API error: {response.status_code}"
+            }
+    except Exception as e:
         return {
-            "status": "fallback_success",
-            "location": hq_name_lower,
-            "data": FLIGHTS_CACHE[hq_name_lower]["data"],
-            "cached": True,
-            "timestamp": datetime.utcnow().isoformat()
+            "status": "error",
+            "message": f"Error: {str(e)}"
         }
 
-    return {
-        "status": "api_error",
-        "message": "OpenSky API calls failed entirely after retries. No fallback cache available.",
-        "data": {"all_flights": [], "couriers": [], "heavy_cargo": [], "total_flights": 0, "total_couriers": 0, "total_heavy_cargo": 0}
-    }
+# ============================================================================
+# FUNCIÓN DE PRUEBA
+# ============================================================================
 
+def test_traffic_air():
+    """Prueba las funciones de tráfico aéreo"""
+    print("=" * 60)
+    print("✈️ DIAGNÓSTICO DE TRÁFICO AÉREO")
+    print("=" * 60)
+    
+    # 1. Probar vuelos en Europa
+    print("\n📍 Región: Europa")
+    result = get_flights_by_region("europe")
+    if result and result["status"] == "success":
+        print(f"✅ {result['total_flights']} vuelos detectados")
+        # Mostrar primeros 3
+        for i, flight in enumerate(result["flights"][:3]):
+            print(f"   ✈️ {i+1}. {flight['callsign']} - {flight['origin_country']} - Alt: {flight['baro_altitude']}m")
+    else:
+        print(f"❌ Error: {result.get('message', 'Desconocido')}")
+    
+    # 2. Probar vuelos cerca de Beirut
+    print("\n📍 Sede: Beirut")
+    result = get_flights_by_company_hq("beirut")
+    if result and result["status"] == "success":
+        print(f"✅ {result['total_flights']} vuelos cerca de Beirut")
+        for flight in result["flights"][:3]:
+            print(f"   ✈️ {flight['callsign']} - {flight['origin']} - Alt: {flight['altitude']}m")
+    else:
+        print(f"❌ Error: {result.get('message', 'Desconocido')}")
+
+if __name__ == "__main__":
+    test_traffic_air()
+    
+##MEJORAR FILTRADO PARA EL FRONT END!!!!
