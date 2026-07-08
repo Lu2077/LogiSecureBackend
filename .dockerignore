@@ -1,0 +1,27 @@
+# Keep the Docker build context small and secrets out of images.
+.git
+.gitignore
+.github
+
+# Secrets — NEVER baked into an image
+.env
+*.env
+!.env.example
+
+# Python artifacts
+**/__pycache__
+**/*.pyc
+**/.venv
+**/venv
+
+# Local models are mounted as volumes, not copied into the image
+backend/ai_agents/models/*
+!backend/ai_agents/models/.gitkeep
+
+# Docs, IDE and OS noise
+docs
+*.md
+.vscode
+.idea
+Thumbs.db
+.DS_Store

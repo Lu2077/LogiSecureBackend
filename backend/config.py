@@ -3,9 +3,17 @@ from functools import lru_cache
 
 class Settings(BaseSettings):
     # 🖥️ SERVER CONFIGURATION
+    APP_NAME: str = "LogiSecure AI - Core System"
+    APP_VERSION: str = "0.1.0"
     BACKEND_ENV: str = "development"
+    HOST: str = "0.0.0.0"
     PORT: int = 8000
-    
+
+    # 🌐 CORS: comma-separated list of allowed origins.
+    # "*" is fine for the hackathon demo; lock this down to the real frontend
+    # origin (e.g. "http://localhost:5173") before any client deployment.
+    CORS_ALLOW_ORIGINS: str = "*"
+
     # 🛰️ API CREDENTIALS (Assigned as empty strings by default to prevent crashes)
     AISSTREAM_API_KEY: str = ""
     OPENSKY_USERNAME: str = ""
@@ -27,4 +35,9 @@ class Settings(BaseSettings):
 @lru_cache()
 def get_settings():
     return Settings()
+
+def get_cors_origins() -> list[str]:
+    """Parse CORS_ALLOW_ORIGINS ('*' or comma-separated URLs) into the list CORSMiddleware expects."""
+    raw = get_settings().CORS_ALLOW_ORIGINS
+    return [origin.strip() for origin in raw.split(",") if origin.strip()]
 

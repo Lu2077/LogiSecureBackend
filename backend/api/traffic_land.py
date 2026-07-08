@@ -62,6 +62,28 @@ def get_route_geometry_osrm(start: List[float], end: List[float]) -> List[Dict[s
         logger.error(f"❌ OSRM Geometry tracking compilation failure: {e}")
     return []
 
+def get_land_traffic_by_hq(hq_name: str) -> Dict[str, Any]:
+    """
+    Dashboard layer: summarizes the land/intermodal shipments registered in the
+    local TMS so the /api/dashboard/sync master endpoint can render them.
+    Detailed live/predictive telemetry stays in get_asset_tracking_by_id().
+    """
+    shipments = [
+        {
+            "tracking_id": tracking_id,
+            "client": cargo["client"],
+            "cargo": cargo["cargo_type"],
+            "tracking_type": cargo["tracking_type"],
+            "has_active_gps": cargo["has_active_gps"],
+        }
+        for tracking_id, cargo in ENTERPRISE_SHIPMENTS.items()
+    ]
+    return {
+        "status": "success",
+        "location": hq_name.lower().strip(),
+        "data": {"active_shipments": shipments, "total_shipments": len(shipments)},
+    }
+
 def get_asset_tracking_by_id(tracking_id: str) -> Dict[str, Any]:
     """
     Core TMS Controller: Resolves the CEO's query by searching for 

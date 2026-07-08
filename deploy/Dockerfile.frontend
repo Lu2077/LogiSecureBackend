@@ -1,0 +1,18 @@
+# ==============================================================================
+# LOGISECURE AI - FRONTEND IMAGE (React + Vite) — PLACEHOLDER
+#
+# The frontend/ directory has not been merged yet. Once it exists, the standard
+# pattern below applies (build static assets with Node, serve them with nginx).
+# Keep this file in sync with the "frontend" service in docker-compose.yml.
+# ==============================================================================
+
+# FROM node:22-alpine AS build
+# WORKDIR /app
+# COPY frontend/package*.json ./
+# RUN npm ci
+# COPY frontend/ ./
+# RUN npm run build
+#
+# FROM nginx:1.27-alpine AS runtime
+# COPY --from=build /app/dist /usr/share/nginx/html
+# EXPOSE 80

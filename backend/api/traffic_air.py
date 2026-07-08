@@ -5,8 +5,15 @@ import json
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 
-# Desactivar advertencias de seguridad
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+# Pre-configured coordinates of the world's most important logistics hubs.
+AVAILABLE_LOCATIONS = {
+    "roterdam": {"lat": 51.9225, "lon": 4.4791, "range": 2.0},  # Róterdam (Europe)
+    "houston": {"lat": 29.7604, "lon": -95.3698, "range": 2.5}, # Logistic Hub Texas (USA)
+    "sao_paulo": {"lat": -23.5505, "lon": -46.6333, "range": 2.0}, # Logistic center SaoPaulo (Brazil)
+    "shanghai": {"lat": 31.2304, "lon": 121.4737, "range": 1.5},  # Shanghái port (Asia)
+    #If the user wants to try another coordinate in the demo || React sends "custom" along with the Lat/Lon marked by the user when clicking on the map
+    "custom": {"lat": 0.0, "lon": 0.0, "range": 2.0, "type": "Custom Enterprise Node"}
+}
 
 # ============================================================================
 # CONFIGURACIÓN
@@ -21,9 +28,15 @@ REGIONS = {
     "asia": {"lamin": 30.0, "lomin": 120.0, "lamax": 33.0, "lomax": 123.0}
 }
 
-# ============================================================================
-# FUNCIONES PRINCIPALES
-# ============================================================================
+def validate_hq(hq_name: str) -> bool:
+    """Validate if HQ exists in configuration"""
+    return hq_name.lower() in AVAILABLE_LOCATIONS
+
+def get_hq_coordinates(hq_name: str) -> Optional[Dict[str, float]]:
+    """Get HQ coordinates and range"""
+    if not validate_hq(hq_name):
+        return None
+    return AVAILABLE_LOCATIONS[hq_name.lower()]
 
 def get_flights_by_region(region: str = "europe") -> Optional[Dict[str, Any]]:
     """
@@ -118,11 +131,36 @@ def get_flights_by_company_hq(hq_name: str) -> Dict[str, Any]:
     hq = hq_name.lower().strip()
     if hq not in HQ_COORDINATES:
         return {
-            "status": "error",
-            "message": f"Sede '{hq_name}' no encontrada"
+            "status": "error", 
+            "message": f"Headquarter '{hq_name}' not configured.",
+            "available_hqs": list(AVAILABLE_LOCATIONS.keys())
         }
     
-    coord = HQ_COORDINATES[hq]
+    hq = AVAILABLE_LOCATIONS[hq_name_lower]
+    
+    # Check RAM Cache
+    if hq_name_lower in FLIGHTS_CACHE:
+        cache_entry = FLIGHTS_CACHE[hq_name_lower]
+        if (current_time - cache_entry["timestamp"]) < CACHE_DURATION:
+            logger.info(f"⚡ Serving cached flight data for HQ [{hq_name_lower}]")
+            return {
+                "status": "success", 
+                "location": hq_name_lower, 
+                "data": cache_entry["data"],
+                "cached": True,
+                "timestamp": datetime.utcnow().isoformat()
+            }
+    
+    # Calculate bounding box geography
+    lat_min = hq["lat"] - hq["range"]
+    lon_min = hq["lon"] - hq["range"]
+    lat_max = hq["lat"] + hq["range"]
+    lon_max = hq["lon"] + hq["range"]
+    
+    logger.info(f"📡 Querying OpenSky for HQ [{hq_name_lower}] - BBox: ({lat_min:.2f}, {lon_min:.2f})")
+    
+    settings = get_settings()
+    url = "https://opensky-network.org/api/states/all"
     
     # Buscar vuelos en un radio aproximado (5 grados)
     url = f"{OPENSKY_BASE_URL}/states/all"

@@ -8,41 +8,13 @@ from typing import Dict, List, Any, Optional
 # Desactivar advertencias de seguridad
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# ============================================================================
-# CONFIGURACIÓN
-# ============================================================================
-OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
-
-# Mapeo de códigos de clima WMO a descripciones
-WEATHER_CODES = {
-    0: "Despejado",
-    1: "Mayormente despejado",
-    2: "Parcialmente nublado",
-    3: "Nublado",
-    45: "Niebla",
-    48: "Niebla con escarcha",
-    51: "Llovizna ligera",
-    53: "Llovizna moderada",
-    55: "Llovizna densa",
-    56: "Llovizna congelada ligera",
-    57: "Llovizna congelada densa",
-    61: "Lluvia ligera",
-    63: "Lluvia moderada",
-    65: "Lluvia intensa",
-    66: "Lluvia congelada ligera",
-    67: "Lluvia congelada intensa",
-    71: "Nieve ligera",
-    73: "Nieve moderada",
-    75: "Nieve intensa",
-    77: "Granos de nieve",
-    80: "Chubascos ligeros",
-    81: "Chubascos moderados",
-    82: "Chubascos violentos",
-    85: "Chubascos de nieve ligeros",
-    86: "Chubascos de nieve intensos",
-    95: "Tormenta eléctrica",
-    96: "Tormenta con granizo ligero",
-    99: "Tormenta con granizo intenso"
+AVAILABLE_LOCATIONS = {
+    "roterdam": {"lat": 51.9225, "lon": 4.4791, "timezone": "Europe/Amsterdam"},
+    "houston": {"lat": 29.7604, "lon": -95.3698, "timezone": "America/Chicago"},
+    "sao_paulo": {"lat": -23.5505, "lon": -46.6333, "timezone": "America/Sao_Paulo"},
+    "shanghai": {"lat": 31.2304, "lon": 121.4737, "timezone": "Asia/Shanghai"},
+    #If the user wants to try another coordinate in the demo || React sends "custom" along with the Lat/Lon marked by the user when clicking on the map
+    "custom": {"lat": 0.0, "lon": 0.0, "range": 2.0, "type": "Custom Enterprise Node", "timezone": "UTC"}
 }
 
 # ============================================================================
@@ -53,10 +25,10 @@ def get_weather(lat: float, lon: float, location_name: str = "Ubicación") -> Op
     """
     Obtiene el clima actual de Open-Meteo para una ubicación
     
-    Args:
-        lat: Latitud
-        lon: Longitud
-        location_name: Nombre de la ubicación (para mostrar)
+    if hq_name_lower not in AVAILABLE_LOCATIONS:
+        return {"status": "error", "message": "HQ not configured for weather telemetry."}
+        
+    hq = AVAILABLE_LOCATIONS[hq_name_lower]
     
     Returns:
         Dict con datos climáticos o None si falla

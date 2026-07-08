@@ -1,0 +1,22 @@
+# ==============================================================================
+# LOGISECURE AI - OPTIONAL AI / GEOSPATIAL STACK
+# Install ONLY if you are working on the agentic layer or local inference:
+#   pip install -r requirements-ai.txt
+#
+# ⚠️ llama-cpp-python compiles llama.cpp from source (needs CMake + a C++
+# toolchain) and is only required for LOCAL GGUF inference on the AMD ROCm
+# production target. During the hackathon we route inference through cloud
+# APIs (Groq / Fireworks), so most teammates never need this file.
+# ==============================================================================
+
+# 🤖 MULTI-AGENT FRAMEWORKS & REASONING (Local RAG / agentic orchestrator)
+langgraph>=0.0.65
+langchain-core>=0.2.7
+llama-index>=0.10.45
+
+# 🧠 LOCAL GGUF INFERENCE (AMD ROCm production target only)
+# llama-cpp-python>=0.2.77
+
+# 💾 GEOSPATIAL DATA PROCESSING (PostGIS interactions - not wired up yet)
+psycopg2-binary>=2.9.9
+numpy>=1.26
