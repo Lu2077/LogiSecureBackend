@@ -14,7 +14,7 @@ AVAILABLE_LOCATIONS = {
     "roterdam": {"lat": 51.9225, "lon": 4.4791, "range": 1.5},  # Puerto de Róterdam
     "houston": {"lat": 29.7604, "lon": -95.3698, "range": 2.0}, # Hub Marítimo Texas
     "sao_paulo": {"lat": -23.5505, "lon": -46.6333, "range": 1.5}, # Puerto de Santos (Brasil)
-    "shanghai": {"lat": 31.2304, "lon": 121.4737, "range": 1.0}  # Puerto de Shanghái
+    "shanghai": {"lat": 31.2304, "lon": 121.4737, "range": 1.0},  # Puerto de Shanghái
     #If the user wants to try another coordinate in the demo || React sends "custom" along with the Lat/Lon marked by the user when clicking on the map
     "custom": {"lat": 0.0, "lon": 0.0, "range": 2.0, "type": "Custom Enterprise Node"}
 }
@@ -119,10 +119,10 @@ def get_vessels_by_company_hq(hq_name: str) -> Dict[str, Any]:
         return {
             "status": "error", 
             "message": f"Headquarter '{hq_name}' not configured for maritime tracking.",
-            "available_hqs": list(SEDES_DISPONIBLES.keys())
+            "available_hqs": list(AVAILABLE_LOCATIONS.keys())
         }
         
-    hq = SEDES_DISPONIBLES[hq_name_lower]
+    hq = AVAILABLE_LOCATIONS[hq_name_lower]
     
     # Check RAM cache memory boundary
     if hq_name_lower in SHIPS_CACHE:

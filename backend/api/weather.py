@@ -11,9 +11,9 @@ AVAILABLE_LOCATIONS = {
     "roterdam": {"lat": 51.9225, "lon": 4.4791, "timezone": "Europe/Amsterdam"},
     "houston": {"lat": 29.7604, "lon": -95.3698, "timezone": "America/Chicago"},
     "sao_paulo": {"lat": -23.5505, "lon": -46.6333, "timezone": "America/Sao_Paulo"},
-    "shanghai": {"lat": 31.2304, "lon": 121.4737, "timezone": "Asia/Shanghai"}
-    #If the user wants to try another coordinate in the demo || React sends "custom" along with the Lat/Lon marked by the user when clicking on the map 
-    "custom": {"lat": 0.0, "lon": 0.0, "range": 2.0, "type": "Custom Enterprise Node"}
+    "shanghai": {"lat": 31.2304, "lon": 121.4737, "timezone": "Asia/Shanghai"},
+    #If the user wants to try another coordinate in the demo || React sends "custom" along with the Lat/Lon marked by the user when clicking on the map
+    "custom": {"lat": 0.0, "lon": 0.0, "range": 2.0, "type": "Custom Enterprise Node", "timezone": "UTC"}
 }
 
 WEATHER_CACHE = {}
@@ -26,7 +26,7 @@ def get_live_weather_by_hq(hq_name: str) -> Dict[str, Any]:
     if hq_name_lower not in AVAILABLE_LOCATIONS:
         return {"status": "error", "message": "HQ not configured for weather telemetry."}
         
-    hq = SEDES_DISPONIBLES[hq_name_lower]
+    hq = AVAILABLE_LOCATIONS[hq_name_lower]
     
     if hq_name_lower in WEATHER_CACHE:
         cache = WEATHER_CACHE[hq_name_lower]
