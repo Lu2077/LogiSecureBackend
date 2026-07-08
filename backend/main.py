@@ -30,6 +30,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+
 @app.get("/", tags=["infra"])
 async def root():
     """Service identity card. Lets humans and load balancers confirm what is running."""

@@ -149,6 +149,12 @@ def get_all_hqs_weather() -> Dict[str, Any]:
     for hq in hqs:
         results[hq] = get_weather_by_hq(hq)
     return results
+    
+def get_live_weather_by_hq(hq_name: str) -> Dict[str, Any]:
+    """
+    Alias para get_weather_by_hq - Mantiene compatibilidad con main.py
+    """
+    return get_weather_by_hq(hq_name)
 
 # ============================================================================
 # FUNCIONES DE PRUEBA
