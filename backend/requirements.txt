@@ -1,108 +1,25 @@
-import time
-import requests
-import re  # Usaremos Regex quirúrgico para blindar el parseo de internet
-from typing import Dict, List, Any
-import logging
+# ==============================================================================
+# LOGISECURE AI - PYTHON INFRASTRUCTURE DEPENDENCIES (BACKEND & LOCAL AI)
+# ==============================================================================
 
-logger = logging.getLogger(__name__)
+# 🖥️ CORE BACKEND & WEB ROUTING
+fastapi==0.111.0
+uvicorn[standard]==0.30.1
+pydantic==2.7.4
+pydantic-settings==2.3.3
 
-INCIDENTS_CACHE = {}
-CACHE_DURATION = 300  # Guardar las alertas mundiales por 5 minutos
+# 🛰️ DATA ACQUISITION & TELEMETRY STREAMING
+requests==2.32.3
+websockets==12.0
+urllib3==2.2.1
 
-AVAILABLE_LOCATIONS = {
-    "roterdam": {"lat": 51.92, "lon": 4.47, "range": 5.0},
-    "houston": {"lat": 29.76, "lon": -95.36, "range": 6.0},
-    "sao_paulo": {"lat": -23.55, "lon": -46.63, "range": 5.0},
-    "shanghai": {"lat": 31.23, "lon": 121.47, "range": 4.0},  
-    "custom": {"lat": 0.0, "lon": 0.0, "range": 2.0, "type": "Custom Enterprise Node"}
-}
+# 🤖 MULTI-AGENT FRAMEWORKS & REASONING (Google Gemma 4 / Local RAG)
+langgraph==0.0.65       # Orquestador agéntico para tomar decisiones autónomas
+langchain-core==0.2.7
+llama-index==0.10.45    # Motor para RAG local seguro sobre la base confidencial
+llama-cpp-python==0.2.77 --extra-index-url https://pytorch.org # Inferencia GGUF local acelerada por AMD ROCm
 
-def fetch_global_crisis_feed() -> List[Dict[str, Any]]:
-    """Captures real critical alerts from the UN API (GDACS) using an indestructible Regex Parser"""
-    url = "https://gdacs.org"  
-    incidents = []
-    
-    try:
-        response = requests.get(url, timeout=5)
-        if response.status_code == 200:
-            xml_text = response.text
-            
-            # 🛡️ PARSEO RESILIENTE: Separamos el archivo por etiquetas <item> usando Regex
-            items = re.findall(r'<item>(.*?)</item>', xml_text, re.DOTALL)
-            
-            for item in items:
-                # Extraemos de forma limpia el título, descripción y coordenadas sin importar si el XML está roto
-                title_match = re.search(r'<title>(.*?)</title>', item, re.DOTALL)
-                desc_match = re.search(r'<description>(.*?)</description>', item, re.DOTALL)
-                
-                # Soportamos tanto la etiqueta con namespace como limpia por si cambia la API de la ONU
-                geo_match = re.search(r'<georss:point>(.*?)</georss:point>', item) or re.search(r'<point>(.*?)</point>', item)
-                
-                title = title_match.group(1).strip() if title_match else "Unknown Crisis"
-                description = desc_match.group(1).strip() if desc_match else ""
-                
-                # Limpiamos posibles envolturas CDATA que usa la ONU para ocultar texto HTML
-                title = re.sub(r'<!\[CDATA\[(.*?)\]\]>', r'\1', title)
-                description = re.sub(r'<!\[CDATA\[(.*?)\]\]>', r'\1', description)
-                
-                if geo_match and geo_match.group(1):
-                    coords = geo_match.group(1).strip().split()
-                    if len(coords) == 2:
-                        incidents.append({
-                            "source": "UN_GDACS",
-                            "event": title,
-                            "details": description[:200],
-                            "lat": float(coords[0]),  
-                            "lng": float(coords[1]),  
-                            "severity": "CRITICAL" if "Red" in title or "High" in description else "WARNING"
-                        })
-    except Exception as e:
-        # Si la red de la ONU se cae por completo, tu backend seguirá vivo sirviendo la capa de GDELT
-        logger.error(f"❌ Failure harvesting UN GDACS crisis layer: {e}")
-        
-    # Advanced Geopolitical Simulation Engine (GDELT Structured Data Payloads)
-    # Tus zonas de prueba en Ormuz e Israel SIEMPRE tendrán telemetría activa para impresionar a los jueces
-    incidents.extend([
-        {"source": "GDELT_GEOPOLITICAL", "event": "Haifa Port Security Lockdown", "details": "Tactical airspace closure and harbor perimeter enforcement due to security threat mitigation updates.", "lat": 32.8191, "lng": 34.9983, "severity": "CRITICAL"},
-        {"source": "GDELT_GEOPOLITICAL", "event": "Strait of Hormuz Naval Bottleneck", "details": "Commercial maritime transit slowing down due to regulatory inspection checkpoints.", "lat": 26.5670, "lng": 56.4520, "severity": "CRITICAL"}
-    ])
-    
-    return incidents
+# 💾 GEOSPATIAL DATA PROCESSING (Optional for PostGIS interactions)
+psycopg2-binary==2.9.9
+numpy==1.26.4
 
-def get_incidents_by_hq(hq_name: str) -> Dict[str, Any]:
-    current_time = time.time()
-    hq_name_lower = hq_name.lower().strip()
-    
-    if hq_name_lower not in AVAILABLE_LOCATIONS:
-        return {"status": "error", "message": "Target location out of boundaries."}
-        
-    hq = AVAILABLE_LOCATIONS[hq_name_lower]
-    
-    if hq_name_lower in INCIDENTS_CACHE:
-        cache = INCIDENTS_CACHE[hq_name_lower]
-        if (current_time - cache["timestamp"]) < CACHE_DURATION:
-            logger.info(f"⚡ Serving cached geopolitical incident layer for HQ [{hq_name_lower}]")
-            return {"status": "success", "location": hq_name_lower, "data": cache["data"]}
-            
-    all_global_crises = fetch_global_crisis_feed()
-    local_threats = []
-    
-    for crisis in all_global_crises:
-        lat_diff = abs(crisis["lat"] - hq["lat"])
-        lng_diff = abs(crisis["lng"] - hq["lon"])
-        
-        # Geofencing real sobre coordenadas X,Y
-        if lat_diff <= hq["range"] and lng_diff <= hq["range"]:
-            local_threats.append(crisis)
-            
-    output_payload = {
-        "total_threats_detected": len(local_threats),
-        "threat_level": "RED_ALERT" if any(t["severity"] == "CRITICAL" for t in local_threats) else "STABLE",
-        "incidents": local_threats
-    }
-    
-    INCIDENTS_CACHE[hq_name_lower] = {"timestamp": current_time, "data": output_payload}
-    return {"status": "success", "location": hq_name_lower, "data": output_payload}
-
-if __name__ == "__main__":
-    print(get_incidents_by_hq("roterdam"))
