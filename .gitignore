@@ -218,3 +218,6 @@ __marimo__/
 .streamlit/secrets.toml
 #add example.env or else
 .env.example
+
+# Documentation
+docs/
