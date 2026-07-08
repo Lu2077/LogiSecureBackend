@@ -1,0 +1,63 @@
+# ==============================================================================
+# LOGISECURE AI - LOCAL / ON-PREMISE ORCHESTRATION
+#
+# One command from the repository root boots the whole stack:
+#   docker compose -f deploy/docker-compose.yml up --build
+#
+# Backend will be live at  http://localhost:8000  (interactive docs at /docs)
+# ==============================================================================
+
+name: logisecure
+
+services:
+  backend:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.backend
+    image: logisecure-backend:latest
+    container_name: logisecure-backend
+    ports:
+      - "${PORT:-8000}:8000"
+    # API keys & flags come from backend/.env (created by scripts/setup.*).
+    # The file is optional so the stack still boots with safe defaults / mocks.
+    env_file:
+      - path: ../backend/.env
+        required: false
+    environment:
+      BACKEND_ENV: ${BACKEND_ENV:-development}
+      USE_AMD_ROCM: "False"   # Hackathon mode: inference goes through cloud APIs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+  # ── Frontend (React/Vite) ────────────────────────────────────────────────
+  # The frontend/ directory does not exist yet. When it lands, uncomment:
+  #
+  # frontend:
+  #   build:
+  #     context: ..
+  #     dockerfile: deploy/Dockerfile.frontend
+  #   container_name: logisecure-frontend
+  #   ports:
+  #     - "5173:80"
+  #   depends_on:
+  #     backend:
+  #       condition: service_healthy
+
+  # ── Production target only (AMD ROCm local inference) ───────────────────
+  # Requires AMD kernel drivers on the host; see README before enabling.
+  #
+  # logisecure-agent:
+  #   image: rocm/rocm-terminal:latest
+  #   network_mode: "host"
+  #   devices:
+  #     - "/dev/kfd:/dev/kfd"
+  #     - "/dev/dri:/dev/dri"
+  #   security_opt:
+  #     - "seccomp=unconfined"
+  #   volumes:
+  #     - ../:/workspace
