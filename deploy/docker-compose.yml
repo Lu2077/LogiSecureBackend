@@ -1,0 +1,63 @@
+# deploy/docker-compose.yml
+# Frontend removed - Backend only
+
+services:
+  postgres:
+    image: postgis/postgis:15-3.4
+    container_name: logisecure-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-logisecure}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secure_password}
+      POSTGRES_DB: ${POSTGRES_DB:-logisecure}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - logisecure-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-logisecure}"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  backend:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.backend
+    container_name: logisecure-backend
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-logisecure}:${POSTGRES_PASSWORD:-secure_password}@postgres:5432/${POSTGRES_DB:-logisecure}
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - LLM_MODEL=${LLM_MODEL:-llama-3.1-8b-instant}
+      - LLM_TEMPERATURE=${LLM_TEMPERATURE:-0.3}
+      - DEBUG=${DEBUG:-False}
+      - USE_MOCK_DATA=${USE_MOCK_DATA:-True}
+      - ENABLE_AMD_ROCM=${ENABLE_AMD_ROCM:-False}
+      - HOST=0.0.0.0
+      - PORT=8000
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./logs:/app/logs
+      - ./models:/app/models
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - logisecure-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  logisecure-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
