@@ -3,6 +3,36 @@
 
 Agent-based and on-premise control hub for the automation, optimization, and real-time visibility of global logistics.
 
+# 🚀 Quickstart (Backend)
+
+**Option A — Docker (recommended, zero Python setup):**
+```bash
+docker compose -f deploy/docker-compose.yml up --build
+```
+
+**Option B — Local development (hot reload):**
+```bash
+# Windows (PowerShell)
+.\scripts\setup.ps1
+
+# Linux / macOS / Git Bash
+./scripts/setup.sh
+
+# then
+cd backend
+uvicorn main:app --reload   # activate backend/.venv first
+```
+
+Either way the API is served at:
+| URL | Purpose |
+|---|---|
+| http://localhost:8000 | Service info |
+| http://localhost:8000/docs | Interactive Swagger UI |
+| http://localhost:8000/health | Liveness probe (used by Docker healthcheck) |
+| http://localhost:8000/api/dashboard/sync?hq=roterdam | Master dashboard payload |
+
+API keys are optional for a first boot — copy `.env.example` to `backend/.env` (the setup scripts do this) and fill keys in as you need real feeds. Working on the AI/agents layer? Additionally install `backend/requirements-ai.txt`.
+
 # How it Works
 
 ## System Architecture & Data Pipeline

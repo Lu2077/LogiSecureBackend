@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # backend/requirements.txt
 fastapi==0.104.1
 uvicorn==0.24.0
@@ -10,3 +11,28 @@ langchain==0.0.340
 langchain-fireworks==0.0.2  # ← CHANGED from langchain-groq
 python-multipart==0.0.6
 httpx==0.25.2pip install langgraph langchain langchain-fireworks
+=======
+# ==============================================================================
+# LOGISECURE AI - BACKEND RUNTIME DEPENDENCIES
+# Everything the FastAPI service needs to boot and serve the dashboard.
+# Heavy / optional AI & database stacks live in requirements-ai.txt.
+#
+# Ranged pins keep installs working across team Python versions (3.10 - 3.14);
+# the Docker image pins the interpreter itself (python:3.12-slim) for
+# reproducible on-premise deployments.
+# ==============================================================================
+
+# 🖥️ CORE BACKEND & WEB ROUTING
+fastapi>=0.111,<1.0
+uvicorn[standard]>=0.30,<1.0
+pydantic>=2.7,<3.0
+pydantic-settings>=2.3,<3.0
+
+# 🛰️ DATA ACQUISITION & TELEMETRY STREAMING
+requests>=2.32,<3.0
+websockets>=12.0
+urllib3>=2.2,<3.0
+
+# 🔐 LOCAL SECRETS LOADING (used by logisecure_ai.py / test_groq.py)
+python-dotenv>=1.0,<2.0
+>>>>>>> 0436cee945067eb9dda6c9d62f2903ba4a7cb103
