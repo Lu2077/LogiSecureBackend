@@ -18,6 +18,8 @@ AVAILABLE_LOCATIONS = {
     "shanghai": {"lat": 31.2304, "lon": 121.4737, "range": 1.5},
     "beirut": {"lat": 33.8938, "lon": 35.5018, "range": 1.5},
     "santiago": {"lat": -33.4489, "lon": -70.6693, "range": 1.5},
+    "dubai": {"lat": 25.2528, "lon": 55.3644, "range": 2.0},
+    "tokyo": {"lat": 35.7656, "lon": 140.3856, "range": 2.0},
     "custom": {"lat": 0.0, "lon": 0.0, "range": 2.0, "type": "Custom Enterprise Node"}
 }
 

@@ -8,13 +8,73 @@ from typing import Dict, List, Any, Optional
 # Desactivar advertencias de seguridad
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+# ============================================================================
+# CONFIGURACIÓN DE APIS
+# ============================================================================
+
+OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
+
+# ============================================================================
+# ZONAS HORARIAS POR SEDE ✅ AGREGADO
+# ============================================================================
+
+TIMEZONES = {
+    "roterdam": "Europe/Amsterdam",
+    "houston": "America/Chicago",
+    "sao_paulo": "America/Sao_Paulo",
+    "shanghai": "Asia/Shanghai",
+    "santiago": "America/Santiago",
+    "beirut": "Asia/Beirut",
+    "custom": "UTC"
+}
+
+# ============================================================================
+# COORDENADAS DE SEDES
+# ============================================================================
+
 AVAILABLE_LOCATIONS = {
-    "roterdam": {"lat": 51.9225, "lon": 4.4791, "timezone": "Europe/Amsterdam"},
-    "houston": {"lat": 29.7604, "lon": -95.3698, "timezone": "America/Chicago"},
-    "sao_paulo": {"lat": -23.5505, "lon": -46.6333, "timezone": "America/Sao_Paulo"},
-    "shanghai": {"lat": 31.2304, "lon": 121.4737, "timezone": "Asia/Shanghai"},
-    #If the user wants to try another coordinate in the demo || React sends "custom" along with the Lat/Lon marked by the user when clicking on the map
-    "custom": {"lat": 0.0, "lon": 0.0, "range": 2.0, "type": "Custom Enterprise Node", "timezone": "UTC"}
+    "roterdam": {"lat": 51.9225, "lon": 4.4791},
+    "houston": {"lat": 29.7604, "lon": -95.3698},
+    "sao_paulo": {"lat": -23.5505, "lon": -46.6333},
+    "shanghai": {"lat": 31.2304, "lon": 121.4737},
+    "santiago": {"lat": -33.4489, "lon": -70.6693},
+    "beirut": {"lat": 33.8938, "lon": 35.5018},
+    "custom": {"lat": 0.0, "lon": 0.0}
+}
+
+# ============================================================================
+# CÓDIGOS DE CLIMA OPEN-METEO
+# ============================================================================
+
+WEATHER_CODES = {
+    0: "Despejado",
+    1: "Mayormente despejado",
+    2: "Parcialmente nublado",
+    3: "Nublado",
+    45: "Niebla",
+    48: "Niebla con escarcha",
+    51: "Llovizna ligera",
+    53: "Llovizna moderada",
+    55: "Llovizna intensa",
+    56: "Llovizna congelante ligera",
+    57: "Llovizna congelante intensa",
+    61: "Lluvia ligera",
+    63: "Lluvia moderada",
+    65: "Lluvia intensa",
+    66: "Lluvia congelante ligera",
+    67: "Lluvia congelante intensa",
+    71: "Nieve ligera",
+    73: "Nieve moderada",
+    75: "Nieve intensa",
+    77: "Granizo",
+    80: "Chubascos ligeros",
+    81: "Chubascos moderados",
+    82: "Chubascos intensos",
+    85: "Chubascos de nieve ligeros",
+    86: "Chubascos de nieve intensos",
+    95: "Tormenta eléctrica",
+    96: "Tormenta con granizo ligero",
+    99: "Tormenta con granizo intenso"
 }
 
 # ============================================================================
@@ -24,19 +84,18 @@ AVAILABLE_LOCATIONS = {
 def get_weather(lat: float, lon: float, location_name: str = "Ubicación") -> Optional[Dict[str, Any]]:
     """
     Obtiene el clima actual de Open-Meteo para una ubicación
-    
-    if hq_name_lower not in AVAILABLE_LOCATIONS:
-        return {"status": "error", "message": "HQ not configured for weather telemetry."}
-        
-    hq = AVAILABLE_LOCATIONS[hq_name_lower]
-    
-    Returns:
-        Dict con datos climáticos o None si falla
+    con la zona horaria correcta.
     """
+    # Obtener zona horaria para la ubicación
+    timezone = TIMEZONES.get(location_name.lower(), "UTC")
+    
+    # 🔧 IMPORTANTE: Especificar timezone en la petición
     params = {
         "latitude": lat,
         "longitude": lon,
-        "current_weather": "true"
+        "current_weather": True,
+        "timezone": timezone,  # ← CLAVE: zona horaria correcta
+        "forecast_days": 1
     }
     
     try:
@@ -50,7 +109,7 @@ def get_weather(lat: float, lon: float, location_name: str = "Ubicación") -> Op
             wind_speed = current.get("windspeed")
             wind_dir = current.get("winddirection")
             weather_code = current.get("weathercode")
-            time = current.get("time")
+            timestamp = current.get("time")  # ← Ahora en la zona horaria correcta
             is_day = current.get("is_day")
             
             # Traducir código de clima
@@ -61,7 +120,7 @@ def get_weather(lat: float, lon: float, location_name: str = "Ubicación") -> Op
                 "location": location_name,
                 "lat": lat,
                 "lon": lon,
-                "timestamp": time,
+                "timestamp": timestamp,  # ← Hora local correcta
                 "temperature": temp,
                 "temperature_unit": "°C",
                 "wind_speed": wind_speed,
@@ -73,7 +132,7 @@ def get_weather(lat: float, lon: float, location_name: str = "Ubicación") -> Op
                 "is_day": is_day == 1,
                 "source": "Open-Meteo",
                 "elevation": data.get("elevation"),
-                "timezone": data.get("timezone")
+                "timezone": timezone  # ← Mostrar zona horaria usada
             }
         else:
             return {
@@ -90,74 +149,27 @@ def get_weather(lat: float, lon: float, location_name: str = "Ubicación") -> Op
 
 def get_weather_by_hq(hq_name: str) -> Dict[str, Any]:
     """
-    Obtiene el clima para una sede específica
-    
-    Args:
-        hq_name: Nombre de la sede (roterdam, houston, etc.)
-    
-    Returns:
-        Dict con datos climáticos
+    Obtiene el clima para una sede específica con zona horaria correcta.
     """
-    # Mapeo de sedes a coordenadas
-    HQ_COORDINATES = {
-        "roterdam": {"lat": 51.92, "lon": 4.47},
-        "houston": {"lat": 29.76, "lon": -95.36},
-        "sao_paulo": {"lat": -23.55, "lon": -46.63},
-        "shanghai": {"lat": 31.23, "lon": 121.47},
-        "beirut": {"lat": 33.89, "lon": 35.50},
-        "santiago": {"lat": -33.45, "lon": -70.66},
-        "puerto_cabello": {"lat": 10.48, "lon": -68.01},
-        "punta_arenas": {"lat": -53.16, "lon": -70.91}
-    }
-    
     hq = hq_name.lower().strip()
-    if hq not in HQ_COORDINATES:
+    if hq not in AVAILABLE_LOCATIONS:
         return {
             "status": "error",
             "message": f"Sede '{hq_name}' no encontrada",
-            "available_locations": list(HQ_COORDINATES.keys())
+            "available_locations": list(AVAILABLE_LOCATIONS.keys())
         }
     
-    coord = HQ_COORDINATES[hq]
+    coord = AVAILABLE_LOCATIONS[hq]
     return get_weather(coord["lat"], coord["lon"], hq)
 
-def get_weather_multiple_locations(locations: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """
-    Obtiene el clima para múltiples ubicaciones
-    
-    Args:
-        locations: Lista de dicts con "name", "lat", "lon"
-    
-    Returns:
-        Dict con todos los resultados
-    """
-    results = {}
-    for loc in locations:
-        name = loc.get("name", "Unknown")
-        lat = loc.get("lat")
-        lon = loc.get("lon")
-        if lat and lon:
-            results[name] = get_weather(lat, lon, name)
-    return results
+# ============================================================================
+# ALIAS PARA COMPATIBILIDAD CON main.py
+# ============================================================================
 
-def get_all_hqs_weather() -> Dict[str, Any]:
-    """
-    Obtiene el clima para todas las sedes predefinidas
-    """
-    hqs = ["roterdam", "houston", "sao_paulo", "shanghai", "beirut", "santiago", "puerto_cabello"]
-    results = {}
-    for hq in hqs:
-        results[hq] = get_weather_by_hq(hq)
-    return results
-    
-def get_live_weather_by_hq(hq_name: str) -> Dict[str, Any]:
-    """
-    Alias para get_weather_by_hq - Mantiene compatibilidad con main.py
-    """
-    return get_weather_by_hq(hq_name)
+get_live_weather_by_hq = get_weather_by_hq
 
 # ============================================================================
-# FUNCIONES DE PRUEBA
+# FUNCIÓN DE PRUEBA
 # ============================================================================
 
 def test_weather():
@@ -166,44 +178,27 @@ def test_weather():
     print("🌤️ DIAGNÓSTICO DE CLIMA")
     print("=" * 60)
     
-    # 1. Probar Puerto Cabello
-    print("\n📍 Puerto Cabello, Venezuela")
-    result = get_weather(10.48, -68.01, "Puerto Cabello")
-    if result and result["status"] == "success":
-        print(f"✅ {result['temperature']}°C - {result['condition']}")
-        print(f"   💨 Viento: {result['wind_speed']} km/h")
-        print(f"   🕐 Hora: {result['timestamp']}")
-    else:
-        print(f"❌ Error: {result.get('message', 'Desconocido')}")
-    
-    # 2. Probar Santiago
+    # Probar Santiago
     print("\n📍 Santiago, Chile")
-    result = get_weather(-33.45, -70.66, "Santiago")
+    result = get_weather_by_hq("santiago")
     if result and result["status"] == "success":
         print(f"✅ {result['temperature']}°C - {result['condition']}")
         print(f"   💨 Viento: {result['wind_speed']} km/h")
+        print(f"   🕐 Hora local: {result['timestamp']}")
+        print(f"   🗺️ Zona horaria: {result['timezone']}")
     else:
         print(f"❌ Error: {result.get('message', 'Desconocido')}")
     
-    # 3. Probar Beirut
-    print("\n📍 Beirut, Líbano")
-    result = get_weather_by_hq("beirut")
+    # Probar São Paulo
+    print("\n📍 São Paulo, Brasil")
+    result = get_weather_by_hq("sao_paulo")
     if result and result["status"] == "success":
         print(f"✅ {result['temperature']}°C - {result['condition']}")
         print(f"   💨 Viento: {result['wind_speed']} km/h")
+        print(f"   🕐 Hora local: {result['timestamp']}")
+        print(f"   🗺️ Zona horaria: {result['timezone']}")
     else:
         print(f"❌ Error: {result.get('message', 'Desconocido')}")
-    
-    # 4. Probar todas las sedes
-    print("\n" + "=" * 60)
-    print("📍 TODAS LAS SEDES")
-    print("=" * 60)
-    all_weather = get_all_hqs_weather()
-    for hq, data in all_weather.items():
-        if data and data["status"] == "success":
-            print(f"   {hq}: {data['temperature']}°C - {data['condition']}")
-        else:
-            print(f"   {hq}: ❌ {data.get('message', 'Error')}")
 
 if __name__ == "__main__":
     test_weather()

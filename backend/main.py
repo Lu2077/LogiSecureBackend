@@ -6,10 +6,18 @@ from config import get_settings, get_cors_origins
 
 # 🛰️ CLEAN SYMMETRIC ARCHITECTURE IMPORTS
 from api.traffic_air import get_flights_by_company_hq
-from api.traffic_sea import get_vessels_by_company_hq
+
 from api.traffic_land import get_land_traffic_by_hq, get_asset_tracking_by_id  # Combined predictive logic
 from api.weather import get_live_weather_by_hq
 from api.global_alerts import get_incidents_by_hq
+
+from api.traffic_sea import (
+    get_vessels_by_company_hq_async,
+    get_vessels_by_bbox_async,
+    get_vessel_by_mmsi_async
+)
+
+
 
 # 🔒 CONFIDENTIAL IN-MEMORY TMS DATABASE
 from ai_agents.database import ENTERPRISE_SHIPMENTS
@@ -47,18 +55,58 @@ async def root():
 async def health():
     """Liveness probe used by the Docker HEALTHCHECK and orchestrators."""
     return {"status": "ok", "timestamp": time.time()}
+    
+#--------------$$$$TESTING_API_ENDPOINTS_FOR_VISALIZATION_&_DEBBUGIND!!$$$$$$$$$$$$$------------------
 
-@app.get("/api/dashboard/sync")
+# 🚢 ENPOINTS MARÍTIMOS CONECTADOS AL SWAGGER UI DE TU DEVOPS
+@app.get("/api/maritime/bbox", tags=["maritime"])
+async def maritime_by_bbox(
+    lat: float = Query(..., description="Latitud del centro"),
+    lon: float = Query(..., description="Longitud del centro"),
+    radius: float = Query(50, description="Radio en km")
+):
+    """🗺️ Buques en un área definida por el usuario (click/zoom en mapa)"""
+    result = await get_vessels_by_bbox_async(lat, lon, radius)
+    return result
+
+# 🏁 2. COLOCAR EL ENDPOINT DE VARIABLE {hq} DESPUÉS
+@app.get("/api/maritime/{hq}", tags=["maritime"])
+async def maritime_by_hq(hq: str):
+    """🚢 Buques en tiempo real cerca de una sede (AISstream WebSocket)"""
+    result = await get_vessels_by_company_hq_async(hq)
+    if result.get("status") == "error":
+        raise HTTPException(status_code=404, detail=result.get("message", "Error"))
+    return result
+
+@app.get("/api/maritime/mmsi/{mmsi}", tags=["maritime"])
+async def maritime_by_mmsi(mmsi: str):
+    """🔍 Busca un buque específico por su MMSI"""
+    result = await get_vessel_by_mmsi_async(mmsi)  # ✅ Sincronizado
+    if result.get("status") == "error":
+        raise HTTPException(status_code=404, detail=result.get("message"))
+    return result
+    
+#-----------$$$$TRAFFIC_SEA_&_VESSELS$$$$----------------------------------$$$$
+
+@app.get("/api/dashboard/sync", tags=["core_dashboard"])
 async def sync_dashboard_by_hq(hq: str = Query("roterdam")):
     """
-    THE MASTER ENDPOINT: With a single call, the React Frontend
-    receives absolutely everything about the headquarters' state to paint the complete map.
+    EL ENDPOINT MAESTRO: Con una sola llamada, el Frontend de React 
+    recibe absolutamente todo el estado de la sede para pintar el mapa completo.
     """
+    # Como la consulta a AISstream es asíncrona nativa, la ejecutamos primero con await
+    try:
+        maritime_data = await get_vessels_by_company_hq_async(hq)
+    except Exception as e:
+        maritime_data = {"status": "error", "message": f"Maritime stream offline: {e}"}
+
+    # El resto de las APIs (OpenSky, Open-Meteo, OSINT) corren sobre HTTP tradicional;
+    # FastAPI las procesará de forma segura sin congelar el hilo de red.
     return {
-        "location": hq,
+        "location": hq.lower(),
         "timestamp": time.time(),
         "air_traffic": get_flights_by_company_hq(hq),
-        "maritime_traffic": get_vessels_by_company_hq(hq),
+        "maritime_traffic": maritime_data,  # ✅ CONECTADO LOS 17 BARCOS REALES AQUÍ
         "land_traffic": get_land_traffic_by_hq(hq),
         "weather_telemetry": get_live_weather_by_hq(hq),
         "geopolitical_threats": get_incidents_by_hq(hq)
