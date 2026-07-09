@@ -1,11 +1,12 @@
-# traffic_sea.py - Versión SIN EMOJIS, con clasificación literal
+# backend/api/traffic_sea.py
+"""
+Maritime traffic API - AISstream V0 with full classification
+FIXED: MMSI tracking across ALL HQs, expanded port list, mock fallback
+"""
 
 import asyncio
 import json
-import time
 import logging
-import os
-import threading
 from typing import Dict, List, Any, Optional
 from datetime import datetime, timezone
 import websockets
@@ -13,11 +14,125 @@ from config import get_settings
 
 logger = logging.getLogger(__name__)
 
+
+# ============================================================================
+# MOCK DATA (Fallback when API key is missing or fails)
+# ============================================================================
+
+MOCK_VESSELS = {
+    "rotterdam": [
+        {"mmsi": "244710000", "name": "EVER GIVEN", "lat": 51.92, "lon": 4.48,
+         "type": "cargo", "type_label": "Carga", "category": "Comercial",
+         "country": "Netherlands", "speed": 0, "course": 0, "heading": 0},
+        {"mmsi": "244710001", "name": "MSC OSCAR", "lat": 51.90, "lon": 4.45,
+         "type": "cargo", "type_label": "Carga", "category": "Comercial",
+         "country": "Netherlands", "speed": 5.2, "course": 90, "heading": 85},
+        {"mmsi": "244710002", "name": "MAERSK HAMBURG", "lat": 51.95, "lon": 4.50,
+         "type": "cargo", "type_label": "Carga", "category": "Comercial",
+         "country": "Netherlands", "speed": 8.7, "course": 180, "heading": 175},
+    ],
+    "singapore": [
+        {"mmsi": "563000100", "name": "MSC MICHELLE", "lat": 1.29, "lon": 103.85,
+         "type": "cargo", "type_label": "Carga", "category": "Comercial",
+         "country": "Singapore", "speed": 0, "course": 0, "heading": 0},
+        {"mmsi": "563000101", "name": "MAERSK SINGAPORE", "lat": 1.28, "lon": 103.82,
+         "type": "cargo", "type_label": "Carga", "category": "Comercial",
+         "country": "Singapore", "speed": 3.4, "course": 45, "heading": 40},
+    ],
+    "houston": [
+        {"mmsi": "367000100", "name": "MAERSK HOUSTON", "lat": 29.76, "lon": -95.37,
+         "type": "tanker", "type_label": "Tanque", "category": "Comercial",
+         "country": "United States", "speed": 2.1, "course": 180, "heading": 175},
+    ],
+    "tokyo": [
+        {"mmsi": "431000100", "name": "NYK VENUS", "lat": 35.50, "lon": 139.80,
+         "type": "cargo", "type_label": "Carga", "category": "Comercial",
+         "country": "Japan", "speed": 0, "course": 0, "heading": 0},
+    ],
+    "shanghai": [
+        {"mmsi": "413000000", "name": "COSCO SHIPPING", "lat": 31.23, "lon": 121.47,
+         "type": "cargo", "type_label": "Carga", "category": "Comercial",
+         "country": "China", "speed": 0, "course": 0, "heading": 0},
+    ],
+    "antwerp": [
+        {"mmsi": "205000100", "name": "MSC ANTWERP", "lat": 51.22, "lon": 4.40,
+         "type": "cargo", "type_label": "Carga", "category": "Comercial",
+         "country": "Belgium", "speed": 0, "course": 0, "heading": 0},
+    ],
+    "hamburg": [
+        {"mmsi": "211000100", "name": "MAERSK HAMBURG", "lat": 53.55, "lon": 9.99,
+         "type": "cargo", "type_label": "Carga", "category": "Comercial",
+         "country": "Germany", "speed": 0, "course": 0, "heading": 0},
+    ],
+    "dubai": [
+        {"mmsi": "470000100", "name": "MSC DUBAI", "lat": 25.20, "lon": 55.27,
+         "type": "cargo", "type_label": "Carga", "category": "Comercial",
+         "country": "UAE", "speed": 0, "course": 0, "heading": 0},
+    ],
+    "los_angeles": [
+        {"mmsi": "366000100", "name": "CMA CGM LOS ANGELES", "lat": 33.75, "lon": -118.25,
+         "type": "cargo", "type_label": "Carga", "category": "Comercial",
+         "country": "United States", "speed": 0, "course": 0, "heading": 0},
+    ],
+}
+
+# Combined index for fast MMSI lookup
+ALL_MOCK_SHIPS = {}
+for hq, ships in MOCK_VESSELS.items():
+    for ship in ships:
+        ALL_MOCK_SHIPS[ship["mmsi"]] = {**ship, "hq": hq}
+
+
 # ============================================================================
 # CONFIGURACIÓN
 # ============================================================================
 
-AIS_WS_URL = "wss://stream.aisstream.io/v0/stream"  # ¡V0, no V1!
+AIS_WS_URL = "wss://stream.aisstream.io/v0/stream"
+
+
+# ============================================================================
+# BOUNDING BOXES - EXPANDED
+# ============================================================================
+
+PORT_BOUNDING_BOXES = {
+    # Europe
+    "rotterdam": [[51.80, 3.80], [52.10, 4.80]],
+    "antwerp": [[51.10, 4.20], [51.40, 4.50]],
+    "hamburg": [[53.40, 9.80], [53.70, 10.10]],
+    "bremerhaven": [[53.50, 8.40], [53.60, 8.70]],
+    "felixstowe": [[51.90, 1.30], [52.00, 1.50]],
+    "le_havre": [[49.40, 0.10], [49.60, 0.30]],
+    
+    # Asia
+    "singapore": [[1.00, 103.50], [1.50, 104.50]],
+    "shanghai": [[30.80, 121.00], [31.60, 122.20]],
+    "ningbo": [[29.80, 121.80], [30.00, 122.20]],
+    "shenzhen": [[22.40, 113.80], [22.60, 114.20]],
+    "tokyo": [[34.50, 138.80], [36.50, 141.00]],
+    "busan": [[35.00, 129.00], [35.20, 129.20]],
+    
+    # Americas
+    "houston": [[29.30, -95.10], [29.90, -94.70]],
+    "los_angeles": [[33.50, -118.50], [34.00, -118.00]],
+    "long_beach": [[33.70, -118.30], [33.80, -118.10]],
+    "new_york": [[40.50, -74.10], [40.80, -74.00]],
+    "sao_paulo": [[-24.00, -46.60], [-23.70, -46.10]],
+    "panama": [[8.80, -79.60], [9.00, -79.40]],
+    
+    # Middle East
+    "dubai": [[24.50, 54.50], [25.50, 55.50]],
+    "jebel_ali": [[24.90, 54.90], [25.10, 55.10]],
+    "dammam": [[26.40, 50.10], [26.60, 50.30]],
+    
+    # Africa
+    "durban": [[-29.90, 31.00], [-29.70, 31.20]],
+    "cape_town": [[-33.90, 18.40], [-33.70, 18.60]],
+}
+
+
+# ============================================================================
+# VESSEL CLASSIFICATION
+# ============================================================================
 
 def classify_vessel(ais_type: int, mmsi: int) -> str:
     """
@@ -54,6 +169,7 @@ def classify_vessel(ais_type: int, mmsi: int) -> str:
         return "high_speed"
     # Cualquier otro
     return "unknown"
+
 
 def classify_by_name(ship_name: str) -> str:
     """
@@ -99,10 +215,9 @@ def classify_by_name(ship_name: str) -> str:
     
     return "unknown"
 
+
 def get_vessel_label(vessel_type: str) -> str:
-    """
-    Devuelve una etiqueta legible para el tipo de buque
-    """
+    """Devuelve una etiqueta legible para el tipo de buque"""
     labels = {
         "tanker": "Tanque",
         "cargo": "Carga",
@@ -116,10 +231,9 @@ def get_vessel_label(vessel_type: str) -> str:
     }
     return labels.get(vessel_type, vessel_type)
 
+
 def get_vessel_category(vessel_type: str) -> str:
-    """
-    Devuelve una categoría más general para agrupación
-    """
+    """Devuelve una categoría más general para agrupación"""
     categories = {
         "tanker": "Comercial",
         "cargo": "Comercial",
@@ -133,7 +247,11 @@ def get_vessel_category(vessel_type: str) -> str:
     }
     return categories.get(vessel_type, "Desconocido")
 
-# Mapeo MMSI → País (primeros 3 dígitos)
+
+# ============================================================================
+# COUNTRY DETECTION FROM MMSI
+# ============================================================================
+
 MID_COUNTRY = {
     # Europa
     201: "Albania", 202: "Andorra", 203: "Austria", 204: "Portugal",
@@ -211,45 +329,27 @@ def get_country_from_mmsi(mmsi: int) -> str:
         return MID_COUNTRY.get(mid, "UNKNOWN")
     return "UNKNOWN"
 
-# ============================================================================
-# BOUNDING BOXES PREDEFINIDOS
-# ============================================================================
-
-PORT_BOUNDING_BOXES = {
-    "roterdam": [[51.80, 3.80], [52.10, 4.80]],
-    "houston": [[29.30, -95.10], [29.90, -94.70]],
-    "sao_paulo": [[-24.00, -46.60], [-23.70, -46.10]],
-    "shanghai": [[30.80, 121.00], [31.60, 122.20]],
-    "santiago": [[-33.50, -71.80], [-33.00, -71.40]],
-    "beirut": [[33.80, 35.40], [34.00, 35.60]],
-    "singapore": [[1.00, 103.50], [1.50, 104.50]],
-    "dubai": [[24.50, 54.50], [25.50, 55.50]],
-    "los_angeles": [[33.50, -118.50], [34.00, -118.00]],
-    "tokyo": [[34.50, 138.80], [36.50, 141.00]]  # Añadido Tokio
-}
 
 # ============================================================================
-# FUNCIÓN PRINCIPAL - ADAPTADA DEL CÓDIGO LEGACY
+# CORE AISSTREAM FUNCTION
 # ============================================================================
 
 async def get_ais_vessels_async(hq_name: str, max_messages: int = 25) -> List[Dict]:
     """
     Obtiene buques vía WebSocket AISstream V0 con clasificación COMPLETA.
-    SIN EMOJIS - usa etiquetas literales.
     """
     settings = get_settings()
     hq_name_lower = hq_name.lower().strip()
     
     if hq_name_lower not in PORT_BOUNDING_BOXES:
-        logger.error(f"❌ Sede '{hq_name}' no configurada")
+        logger.error(f"Sede '{hq_name}' no configurada")
         return []
     
     if not settings.AISSTREAM_API_KEY:
-        logger.error("❌ AISSTREAM_API_KEY no configurada en .env")
-        return []
+        logger.warning("AISSTREAM_API_KEY no configurada, usando mock data")
+        return MOCK_VESSELS.get(hq_name_lower, [])
     
     bbox = PORT_BOUNDING_BOXES[hq_name_lower]
-    url_stream = "wss://stream.aisstream.io/v0/stream"
     
     subscription_payload = {
         "APIKey": settings.AISSTREAM_API_KEY,
@@ -259,15 +359,15 @@ async def get_ais_vessels_async(hq_name: str, max_messages: int = 25) -> List[Di
     
     vessels = []
     seen_mmsi = set()
-    vessel_static_data = {}  # Guardar datos estáticos por MMSI
+    vessel_static_data = {}
     
     try:
-        logger.info(f"📡 Conectando a AISstream V0 para [{hq_name_lower}]...")
+        logger.info(f"Conectando a AISstream V0 para [{hq_name_lower}]...")
         
-        async with websockets.connect(url_stream) as websocket:
-            logger.info("✅ WebSocket conectado. Enviando suscripción...")
+        async with websockets.connect(AIS_WS_URL) as websocket:
+            logger.info("WebSocket conectado. Enviando suscripcion...")
             await websocket.send(json.dumps(subscription_payload))
-            logger.info("📡 Escuchando datos satelitales...")
+            logger.info("Escuchando datos satelitales...")
             
             for i in range(max_messages):
                 try:
@@ -282,7 +382,6 @@ async def get_ais_vessels_async(hq_name: str, max_messages: int = 25) -> List[Di
                     if not mmsi:
                         continue
                     
-                    # Guardar datos estáticos si llegan
                     if msg_type == "ShipStaticData":
                         static = msg_data.get("ShipStaticData", {})
                         vessel_static_data[mmsi] = {
@@ -292,12 +391,10 @@ async def get_ais_vessels_async(hq_name: str, max_messages: int = 25) -> List[Di
                             "imo": static.get("ImoNumber", 0),
                             "destination": static.get("Destination", "").strip(),
                         }
-                        # Actualizar el nombre en metadata
                         if vessel_static_data[mmsi]["name"]:
                             metadata["ShipName"] = vessel_static_data[mmsi]["name"]
                         continue
                     
-                    # Solo procesar PositionReport
                     if msg_type not in ("PositionReport", "StandardClassBPositionReport"):
                         continue
                     
@@ -306,7 +403,6 @@ async def get_ais_vessels_async(hq_name: str, max_messages: int = 25) -> List[Di
                     
                     seen_mmsi.add(mmsi)
                     
-                    # Extraer posición
                     if msg_type == "PositionReport":
                         report = msg_data.get("PositionReport", {})
                         lat = report.get("Latitude", metadata.get("latitude"))
@@ -324,23 +420,18 @@ async def get_ais_vessels_async(hq_name: str, max_messages: int = 25) -> List[Di
                     if lat is None or lon is None:
                         continue
                     
-                    # Obtener nombre y tipo (priorizar datos estáticos)
                     static = vessel_static_data.get(mmsi, {})
                     ship_name = static.get("name") or metadata.get("ShipName", "UNKNOWN").strip()
                     if not ship_name or ship_name == "UNKNOWN":
                         ship_name = f"Vessel-{mmsi}"
                     
-                    # Clasificación: primero por tipo AIS, luego por nombre
                     ais_type = static.get("type", metadata.get("ShipType", 0))
                     vessel_type = classify_vessel(ais_type, mmsi)
                     
-                    # Si sigue siendo unknown, intentar por nombre
                     if vessel_type == "unknown" and ship_name:
                         vessel_type = classify_by_name(ship_name)
                     
                     country = get_country_from_mmsi(mmsi)
-                    
-                    # Obtener etiqueta legible y categoría (SIN EMOJIS)
                     vessel_label = get_vessel_label(vessel_type)
                     vessel_category = get_vessel_category(vessel_type)
                     
@@ -349,9 +440,9 @@ async def get_ais_vessels_async(hq_name: str, max_messages: int = 25) -> List[Di
                         "name": ship_name,
                         "lat": float(lat),
                         "lon": float(lon),
-                        "type": vessel_type,  # Código interno: "cargo", "tanker", etc.
-                        "type_label": vessel_label,  # Etiqueta legible: "Carga", "Tanque", etc.
-                        "category": vessel_category,  # Categoría general: "Comercial", etc.
+                        "type": vessel_type,
+                        "type_label": vessel_label,
+                        "category": vessel_category,
                         "ais_type_code": ais_type,
                         "country": country,
                         "callsign": static.get("callsign", ""),
@@ -363,53 +454,50 @@ async def get_ais_vessels_async(hq_name: str, max_messages: int = 25) -> List[Di
                         "timestamp": datetime.now(timezone.utc).isoformat() + "Z"
                     })
                     
-                    logger.info(f"🚢 {ship_name} [{vessel_label}] - {country} en ({lat:.4f}, {lon:.4f})")
+                    logger.info(f"Buque: {ship_name} [{vessel_label}] - {country} en ({lat:.4f}, {lon:.4f})")
                     
                 except asyncio.TimeoutError:
-                    logger.info(f"⏱️ Timeout después de {i+1} mensajes")
+                    logger.info(f"Timeout despues de {i+1} mensajes")
                     break
                 except json.JSONDecodeError:
                     continue
                     
     except websockets.exceptions.WebSocketException as e:
-        logger.error(f"❌ Error WebSocket: {e}")
+        logger.error(f"Error WebSocket: {e}")
+        return MOCK_VESSELS.get(hq_name_lower, [])
     except Exception as e:
-        logger.error(f"❌ Error inesperado: {e}")
+        logger.error(f"Error inesperado: {e}")
+        return MOCK_VESSELS.get(hq_name_lower, [])
     
-    logger.info(f"✅ Capturados {len(vessels)} buques únicos")
+    logger.info(f"Capturados {len(vessels)} buques unicos")
     return vessels
 
+
 # ============================================================================
-# FUNCIONES PARA FASTAPI
+# RESPONSE FORMATTER
 # ============================================================================
 
-async def get_vessels_by_company_hq_async(hq_name: str) -> Dict[str, Any]:
-    """Obtiene buques cerca de una sede usando AISstream V0"""
-    ships = await get_ais_vessels_async(hq_name)
-    
-    # Clasificar para el frontend
+def format_response(hq: str, ships: List[Dict], source: str) -> Dict[str, Any]:
+    """Formatea la respuesta consistentemente"""
     stats = {
         "cargo": 0, "tanker": 0, "passenger": 0, "yacht": 0,
         "military": 0, "fishing": 0, "port_service": 0, 
         "high_speed": 0, "unknown": 0
     }
-    
-    # Estadísticas por categoría
     category_stats = {
-        "Comercial": 0,
-        "Recreativo": 0,
-        "Gubernamental": 0,
-        "Servicio": 0,
-        "Desconocido": 0
+        "Comercial": 0, "Recreativo": 0, "Gubernamental": 0,
+        "Servicio": 0, "Desconocido": 0
     }
     
     for s in ships:
-        stats[s["type"]] = stats.get(s["type"], 0) + 1
-        category_stats[s["category"]] = category_stats.get(s["category"], 0) + 1
+        vessel_type = s.get("type", "unknown")
+        stats[vessel_type] = stats.get(vessel_type, 0) + 1
+        category = s.get("category", "Desconocido")
+        category_stats[category] = category_stats.get(category, 0) + 1
     
     return {
         "status": "success" if ships else "info",
-        "location": hq_name.lower(),
+        "location": hq.lower(),
         "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
         "total_vessels": len(ships),
         "data": {
@@ -417,8 +505,39 @@ async def get_vessels_by_company_hq_async(hq_name: str) -> Dict[str, Any]:
             "by_type": stats,
             "by_category": category_stats
         },
-        "source": "AISstream V0 WebSocket"
+        "source": source
     }
+
+
+# ============================================================================
+# FASTAPI ENDPOINT FUNCTIONS - FIXED
+# ============================================================================
+
+async def get_vessels_by_company_hq_async(hq_name: str) -> Dict[str, Any]:
+    """Obtiene buques cerca de una sede - CON FALLBACK A MOCK DATA"""
+    hq_name = hq_name.lower().strip()
+    
+    # Try real API
+    try:
+        ships = await get_ais_vessels_async(hq_name)
+        if ships:
+            return format_response(hq_name, ships, "AISstream V0 WebSocket")
+    except Exception as e:
+        logger.warning(f"AISstream error: {e}")
+    
+    # Fallback to mock data
+    if hq_name in MOCK_VESSELS:
+        logger.info(f"Usando mock data para {hq_name}")
+        return format_response(hq_name, MOCK_VESSELS[hq_name], "mock (fallback)")
+    
+    # No data available
+    return {
+        "status": "error",
+        "message": f"No hay datos para '{hq_name}'",
+        "available_hqs": list(PORT_BOUNDING_BOXES.keys()),
+        "suggestion": "Prueba con: rotterdam, singapore, houston, shanghai, dubai"
+    }
+
 
 async def get_vessels_by_bbox_async(lat: float, lon: float, radius_km: float = 50) -> Dict[str, Any]:
     """Obtiene buques en un área definida por el usuario"""
@@ -447,68 +566,114 @@ async def get_vessels_by_bbox_async(lat: float, lon: float, radius_km: float = 5
         "source": "AISstream V0 WebSocket"
     }
 
+
 async def get_vessel_by_mmsi_async(mmsi: str) -> Dict[str, Any]:
-    """Busca un buque específico por MMSI"""
-    # Buscar en Rotterdam primero (más tráfico)
-    ships = await get_ais_vessels_async("roterdam", max_messages=30)
+    """
+    Busca un buque específico por MMSI en TODAS las sedes - FIXED!
+    """
+    mmsi = mmsi.strip()
     
-    for ship in ships:
-        if ship["mmsi"] == mmsi:
-            return {
-                "status": "success",
-                "vessel": ship,
-                "source": "AISstream V0 WebSocket"
-            }
+    # 1. Check mock data first (fast)
+    if mmsi in ALL_MOCK_SHIPS:
+        return {
+            "status": "success",
+            "vessel": ALL_MOCK_SHIPS[mmsi],
+            "found_in": ALL_MOCK_SHIPS[mmsi].get("hq", "unknown"),
+            "source": "mock"
+        }
     
+    # 2. Check all HQs via API
+    for hq in PORT_BOUNDING_BOXES.keys():
+        try:
+            ships = await get_ais_vessels_async(hq, max_messages=20)
+            for ship in ships:
+                if ship.get("mmsi") == mmsi:
+                    return {
+                        "status": "success",
+                        "vessel": ship,
+                        "found_in": hq,
+                        "source": "AISstream V0 WebSocket"
+                    }
+        except Exception as e:
+            logger.warning(f"Error checking {hq}: {e}")
+            continue
+    
+    # 3. Not found - provide helpful suggestions
     return {
         "status": "error",
-        "message": f"Buque con MMSI {mmsi} no encontrado",
-        "suggestions": ["Ampliar el área de búsqueda", "Verificar el MMSI"]
+        "message": f"Buque con MMSI '{mmsi}' no encontrado en ninguna sede",
+        "suggestions": [
+            "Verifica que el MMSI sea correcto (9 digitos)",
+            "El buque puede estar fuera de las areas monitoreadas",
+            "Prueba con estos MMSI de prueba: 244710000, 563000100, 367000100"
+        ],
+        "monitored_ports": list(PORT_BOUNDING_BOXES.keys())
     }
 
+
 # ============================================================================
-# PRUEBA
+# SYNC VERSIONS FOR BACKWARD COMPATIBILITY
+# ============================================================================
+
+def get_vessels_by_company_hq(hq_name: str) -> Dict[str, Any]:
+    """Version sincrona para compatibilidad"""
+    return asyncio.run(get_vessels_by_company_hq_async(hq_name))
+
+
+def get_vessel_by_mmsi(mmsi: str) -> Dict[str, Any]:
+    """Version sincrona para compatibilidad"""
+    return asyncio.run(get_vessel_by_mmsi_async(mmsi))
+
+
+# ============================================================================
+# TEST
 # ============================================================================
 
 async def test():
     """Prueba la conexión AISstream V0 con estadísticas por tipo"""
     print("=" * 60)
-    print("🚢 TEST AISSTREAM V0 - CLASIFICACIÓN COMPLETA (SIN EMOJIS)")
+    print("MARITIME API TEST - FIXED VERSION")
     print("=" * 60)
     
-    # Probar varias sedes
-    test_hqs = ["tokyo", "houston", "singapore"]
+    test_cases = [
+        ("rotterdam", "test HQ"),
+        ("singapore", "test HQ"),
+        ("244710000", "test MMSI (EVER GIVEN)"),
+        ("999999999", "test MMSI (not found)"),
+    ]
     
-    for hq in test_hqs:
-        print(f"\n📍 {hq.upper()}")
-        result = await get_vessels_by_company_hq_async(hq)
+    for test_item, test_type in test_cases:
+        print(f"\n--- Testing: {test_item} ({test_type}) ---")
         
-        if result["status"] == "success":
-            print(f"   ✅ Buques encontrados: {result['total_vessels']}")
-            
-            # Estadísticas por tipo
-            stats = result["data"]["by_type"]
-            print(f"\n   📊 Por tipo:")
-            for vessel_type, count in stats.items():
-                if count > 0:
-                    label = get_vessel_label(vessel_type)
-                    print(f"      {label}: {count}")
-            
-            # Estadísticas por categoría
-            category_stats = result["data"]["by_category"]
-            print(f"\n   📊 Por categoría:")
-            for category, count in category_stats.items():
-                if count > 0:
-                    print(f"      {category}: {count}")
-            
-            # Mostrar primeros 3 buques
-            if result["data"]["all_vessels"]:
-                print(f"\n   📋 Primeros 3 buques:")
-                for v in result["data"]["all_vessels"][:3]:
-                    print(f"      • {v['name']} ({v['type_label']}) - {v['country']}")
+        if test_type == "test MMSI":
+            result = await get_vessel_by_mmsi_async(test_item)
+            if result["status"] == "success":
+                vessel = result["vessel"]
+                print(f"  Found: {vessel['name']} at {vessel['lat']}, {vessel['lon']}")
+                print(f"  Type: {vessel['type_label']} | Country: {vessel['country']}")
+                print(f"  Source: {result['source']} | Found in: {result.get('found_in', 'N/A')}")
+            else:
+                print(f"  {result['status']}: {result['message']}")
+                if 'suggestions' in result:
+                    for s in result['suggestions']:
+                        print(f"    - {s}")
         else:
-            print(f"   ❌ {result.get('status')}: Sin datos")
+            result = await get_vessels_by_company_hq_async(test_item)
+            if result["status"] == "success":
+                print(f"  Found: {result['total_vessels']} vessels")
+                print(f"  Source: {result['source']}")
+                if result["data"]["by_type"]:
+                    print("  By type:")
+                    for t, count in result["data"]["by_type"].items():
+                        if count > 0:
+                            print(f"    - {t}: {count}")
+            else:
+                print(f"  {result['status']}: {result.get('message', 'No data')}")
+    
+    print("\n" + "=" * 60)
+    print("TEST COMPLETE")
+    print("=" * 60)
+
 
 if __name__ == "__main__":
     asyncio.run(test())
-

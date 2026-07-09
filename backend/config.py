@@ -12,7 +12,6 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class Settings(BaseSettings):
-<<<<<<< HEAD
     """
     Application settings loaded from environment variables
     """
@@ -25,12 +24,44 @@ class Settings(BaseSettings):
     )
     
     # ============================================
-    # AI Provider Configuration
+    # Application Info
     # ============================================
-    GROQ_API_KEY: str = Field(default="", description="Groq API key")
-    LLM_MODEL: str = Field(default="llama-3.1-8b-instant", description="LLM model")
-    LLM_TEMPERATURE: float = Field(default=0.3, ge=0.0, le=1.0)
-    LLM_MAX_TOKENS: int = Field(default=500, ge=1, le=4096)
+    APP_NAME: str = Field(default="LogiSecure AI")
+    APP_VERSION: str = Field(default="3.0.0")
+    BACKEND_ENV: str = Field(default="development")
+    
+    # ============================================
+    # Fireworks AI Configuration
+    # ============================================
+    FIREWORKS_API_KEY: str = Field(
+        default="",
+        description="Fireworks AI API key"
+    )
+    
+    FIREWORKS_MODEL: str = Field(
+        default="accounts/fireworks/models/llama-v3p1-8b-instruct",
+        description="Fireworks model"
+    )
+    
+    FIREWORKS_BASE_URL: str = Field(
+        default="https://api.fireworks.ai/inference/v1",
+        description="Fireworks API base URL"
+    )
+    
+    # ============================================
+    # Common LLM Settings
+    # ============================================
+    LLM_TEMPERATURE: float = Field(
+        default=0.3,
+        ge=0.0,
+        le=1.0
+    )
+    
+    LLM_MAX_TOKENS: int = Field(
+        default=500,
+        ge=1,
+        le=4096
+    )
     
     # ============================================
     # Server Configuration
@@ -45,7 +76,7 @@ class Settings(BaseSettings):
     # CORS Configuration
     # ============================================
     ALLOWED_ORIGINS: str = Field(
-        default="http://localhost:3000,http://localhost:5173,http://localhost:8000"
+        default="http://localhost:3000,http://localhost:5173,http://localhost:8000,http://127.0.0.1:8000"
     )
     
     @property
@@ -73,7 +104,6 @@ class Settings(BaseSettings):
     # ============================================
     USE_MOCK_DATA: bool = Field(default=True)
     ENABLE_AMD_ROCM: bool = Field(default=False)
-    ENABLE_WEBSOCKET: bool = Field(default=True)
     
     # ============================================
     # AI Processing Settings
@@ -84,11 +114,11 @@ class Settings(BaseSettings):
     # ============================================
     # Validators
     # ============================================
-    @field_validator("GROQ_API_KEY")
+    @field_validator("FIREWORKS_API_KEY")
     @classmethod
     def validate_api_key(cls, v):
         if not v or len(v) < 10:
-            raise ValueError("GROQ_API_KEY must be set and at least 10 characters")
+            raise ValueError("FIREWORKS_API_KEY must be set and at least 10 characters")
         return v
     
     @field_validator("LLM_TEMPERATURE")
@@ -100,12 +130,16 @@ class Settings(BaseSettings):
     
     def display(self):
         return {
-            "GROQ_API_KEY": f"{self.GROQ_API_KEY[:8]}..." if len(self.GROQ_API_KEY) > 8 else "***",
-            "LLM_MODEL": self.LLM_MODEL,
+            "PROVIDER": "Fireworks AI",
+            "APP_NAME": self.APP_NAME,
+            "APP_VERSION": self.APP_VERSION,
+            "BACKEND_ENV": self.BACKEND_ENV,
+            "FIREWORKS_MODEL": self.FIREWORKS_MODEL,
             "LLM_TEMPERATURE": self.LLM_TEMPERATURE,
             "DEBUG": self.DEBUG,
             "CONFIDENCE_THRESHOLD": self.CONFIDENCE_THRESHOLD,
             "USE_MOCK_DATA": self.USE_MOCK_DATA,
+            "FIREWORKS_API_KEY": f"{self.FIREWORKS_API_KEY[:8]}..." if len(self.FIREWORKS_API_KEY) > 8 else "***",
         }
 
 
@@ -113,52 +147,22 @@ class Settings(BaseSettings):
 # Create singleton instance
 # ============================================
 settings = Settings()
-=======
-    # 🖥️ SERVER CONFIGURATION
-    APP_NAME: str = "LogiSecure AI - Core System"
-    APP_VERSION: str = "0.1.0"
-    BACKEND_ENV: str = "development"
-    HOST: str = "0.0.0.0"
-    PORT: int = 8000
 
-    # 🌐 CORS: comma-separated list of allowed origins.
-    # "*" is fine for the hackathon demo; lock this down to the real frontend
-    # origin (e.g. "http://localhost:5173") before any client deployment.
-    CORS_ALLOW_ORIGINS: str = "*"
 
-    # 🛰️ API CREDENTIALS (Assigned as empty strings by default to prevent crashes)
-    AISSTREAM_API_KEY: str = ""
-    OPENSKY_USERNAME: str = ""
-    OPENSKY_PASSWORD: str = ""
-    
-    # 🤖 AI ENGINE & HARDWARE (Flexible configurations for the team)
-    USE_AMD_ROCM: bool = False  # Changed to False by default so that standard team laptops do not fail to start up.
-    LOCAL_MODEL_PATH: str = "./models/gemma-4-e4b.gguf" # Suggested route aligned with the Google Gemma bonus
-    FIREWORKS_API_KEY: str = ""
-    
-    # Pydantic configuration for reading the local .env file
-    model_config = SettingsConfigDict(
-        env_file=".env", 
-        env_file_encoding="utf-8",
-        extra="ignore"  # Ignores extraneous variables in the .env file without throwing errors.
-    )
-
-# RAM cache to optimize local server performance
-@lru_cache()
+# ============================================
+# Helper functions for main.py
+# ============================================
 def get_settings():
-    return Settings()
+    return settings
 
-def get_cors_origins() -> list[str]:
-    """Parse CORS_ALLOW_ORIGINS ('*' or comma-separated URLs) into the list CORSMiddleware expects."""
-    raw = get_settings().CORS_ALLOW_ORIGINS
-    return [origin.strip() for origin in raw.split(",") if origin.strip()]
->>>>>>> 0436cee945067eb9dda6c9d62f2903ba4a7cb103
+def get_cors_origins():
+    return settings.allowed_origins_list
 
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("📋 LOGISECURE CONFIGURATION")
+    print("LOGISECURE CONFIGURATION")
     print("=" * 60)
     for key, value in settings.display().items():
         print(f"  {key}: {value}")
-    print("\n✅ Configuration loaded successfully!")
+    print("\nConfiguration loaded successfully!")

@@ -1,6 +1,6 @@
 # backend/logisecure_ai.py
 """
-AI integration for LogiSecure
+AI integration for LogiSecure - Using Fireworks AI
 """
 
 import os
@@ -16,16 +16,18 @@ load_dotenv()
 
 class LogiSecureAI:
     def __init__(self):
-        self.api_key = os.getenv("GROQ_API_KEY")
+        # Use Fireworks API key (NOT Groq)
+        self.api_key = settings.FIREWORKS_API_KEY
         if not self.api_key:
-            raise ValueError("❌ GROQ_API_KEY not found!")
+            raise ValueError("❌ FIREWORKS_API_KEY not found!")
         
-        self.url = "https://api.groq.com/openai/v1/chat/completions"
+        self.base_url = settings.FIREWORKS_BASE_URL
+        self.url = f"{self.base_url}/chat/completions"
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
         }
-        self.model = settings.LLM_MODEL
+        self.model = settings.FIREWORKS_MODEL
         self.confidence_threshold = settings.CONFIDENCE_THRESHOLD
     
     def analyze_incident(self, incident_data: Dict[str, Any]) -> str:
@@ -36,7 +38,7 @@ class LogiSecureAI:
             return f"⏭️ Ignored (confidence: {incident.confidence:.0%})"
         
         prompt = self._build_prompt(incident)
-        return self._call_llm(prompt)
+        return self._call_fireworks(prompt)
     
     def _build_prompt(self, incident: FilteredIncident) -> str:
         context_text = incident.get_ai_prompt_context()
@@ -51,7 +53,8 @@ class LogiSecureAI:
         Provide impact assessment, 3 actions, recovery time, mitigation.
         """
     
-    def _call_llm(self, prompt: str) -> str:
+    def _call_fireworks(self, prompt: str) -> str:
+        """Call Fireworks AI API"""
         data = {
             "model": self.model,
             "messages": [
@@ -63,11 +66,22 @@ class LogiSecureAI:
         }
         
         try:
-            response = requests.post(self.url, headers=self.headers, json=data, timeout=15)
+            response = requests.post(
+                self.url,
+                headers=self.headers,
+                json=data,
+                timeout=30
+            )
+            
             if response.status_code == 200:
-                return response.json()["choices"][0]["message"]["content"]
-            return f"❌ Error: {response.status_code}"
+                result = response.json()
+                return result["choices"][0]["message"]["content"]
+            else:
+                logger.error(f"Fireworks API error: {response.status_code}")
+                return f"❌ Error: {response.status_code} - {response.text}"
+                
         except Exception as e:
+            logger.error(f"Fireworks API exception: {str(e)}")
             return f"❌ Exception: {str(e)}"
     
     def batch_analyze(self, incidents: list) -> list:
@@ -93,6 +107,7 @@ class LogiSecureAI:
             "filter_rate": f"{filtered/total*100:.1f}%" if total > 0 else "0%"
         }
 
+
 if __name__ == "__main__":
     ai = LogiSecureAI()
     test_incident = {
@@ -103,5 +118,5 @@ if __name__ == "__main__":
         "confidence": 0.85,
         "context": {"weather": "Clear", "traffic": "Moderate"}
     }
-    print("🧪 Testing AI...\n")
+    print("🧪 Testing Fireworks AI...\n")
     print(ai.analyze_incident(test_incident))

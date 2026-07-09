@@ -1,3 +1,4 @@
+# backend/api/global_alerts.py
 """
 LogiSecure - Sistema de Alertas Logísticas Multi-Fuente
 Versión para Hackathon - Día 1/3
@@ -20,12 +21,12 @@ logger = logging.getLogger(__name__)
 CACHE_DURATION = 300  # 5 minutos
 INCIDENTS_CACHE = {}
 
-# ----------------------------------------------------------------------------
-# 1. CONFIGURACIÓN DE INFRAESTRUCTURA CRÍTICA (Prioridad Alta)
-# ----------------------------------------------------------------------------
+# ============================================================================
+# 1. CONFIGURACIÓN DE INFRAESTRUCTURA CRÍTICA
+# ============================================================================
 
 CRITICAL_ASSETS = {
-    # Puertos Top 10 Mundiales (por volumen de carga)
+    # Puertos Top 10 Mundiales
     "shanghai_port": {"lat": 31.23, "lon": 121.47, "type": "port", "tier": 1},
     "singapore_port": {"lat": 1.29, "lon": 103.86, "type": "port", "tier": 1},
     "rotterdam_port": {"lat": 51.92, "lon": 4.47, "type": "port", "tier": 1},
@@ -58,30 +59,55 @@ CRITICAL_ASSETS = {
     "bosphorus": {"lat": 41.10, "lon": 29.05, "type": "chokepoint", "tier": 1},
 }
 
-# ----------------------------------------------------------------------------
-# 2. SISTEMA DE PUNTUACIÓN DE RIESGO
-# ----------------------------------------------------------------------------
+# ============================================================================
+# 2. FUNCIONES DE AYUDA
+# ============================================================================
+
+def get_risk_level(score: int) -> str:
+    """Convert numeric score to risk level"""
+    if score >= 70:
+        return "critical"
+    elif score >= 50:
+        return "high"
+    elif score >= 30:
+        return "medium"
+    else:
+        return "low"
+
+def get_risk_color(score: int) -> str:
+    """Get color for risk score"""
+    if score >= 70:
+        return "red"
+    elif score >= 50:
+        return "orange"
+    elif score >= 30:
+        return "yellow"
+    else:
+        return "green"
+
+# ============================================================================
+# 3. SISTEMA DE PUNTUACIÓN DE RIESGO
+# ============================================================================
 
 class RiskScorer:
-    """
-    Calcula el riesgo real basado en múltiples factores
-    """
+    """Calcula el riesgo real basado en múltiples factores"""
+    
     weights = {
-        "tier_1_asset": 40,      # Puerto/aeropuerto top 10
-        "tier_2_asset": 25,      # Puerto/aeropuerto secundario
-        "chokepoint": 50,        # Estrecho/canal
-        "military_conflict": 35,  # Guerra activa
-        "terrorism": 30,         # Ataque terrorista
-        "natural_disaster": 25,  # Huracán, terremoto
-        "political_instability": 15,  # Protestas, golpes
-        "media_confidence": 10,  # Reuters/BBC = 10, Blog = 3
-        "proximity": 5,          # Cerca de sede del usuario
+        "tier_1_asset": 40,
+        "tier_2_asset": 25,
+        "chokepoint": 50,
+        "military_conflict": 35,
+        "terrorism": 30,
+        "natural_disaster": 25,
+        "political_instability": 15,
+        "media_confidence": 10,
+        "proximity": 5,
     }
     
     def score_event(self, event: Dict[str, Any], user_hq: Dict[str, float]) -> int:
         score = 0
         
-        # 1. Impacto en infraestructura crítica
+        # Impacto en infraestructura crítica
         for asset_name, asset_info in CRITICAL_ASSETS.items():
             if asset_name in event.get("text", "").lower():
                 if asset_info["tier"] == 1:
@@ -91,7 +117,7 @@ class RiskScorer:
                 if asset_info["type"] == "chokepoint":
                     score += self.weights["chokepoint"]
         
-        # 2. Tipo de evento
+        # Tipo de evento
         text = event.get("text", "").lower()
         if any(k in text for k in ["attack", "missile", "strike", "war", "invasion"]):
             score += self.weights["military_conflict"]
@@ -102,28 +128,26 @@ class RiskScorer:
         if any(k in text for k in ["protest", "riot", "coup", "unrest"]):
             score += self.weights["political_instability"]
         
-        # 3. Confianza de la fuente
+        # Confianza de la fuente
         source = event.get("source", "").lower()
         if source in ["reuters", "bbc", "ap", "afp"]:
             score += self.weights["media_confidence"]
         
-        # 4. Proximidad al usuario
+        # Proximidad al usuario
         if user_hq:
             lat_diff = abs(event.get("lat", 0) - user_hq.get("lat", 0))
             lon_diff = abs(event.get("lon", 0) - user_hq.get("lon", 0))
             if lat_diff < 5 and lon_diff < 5:
                 score += self.weights["proximity"]
         
-        return min(score, 100)  # Cap en 100
+        return min(score, 100)
 
 # ============================================================================
-# 3. CAPA DE DATOS - MÚLTIPLES FUENTES
+# 4. CAPA DE DATOS
 # ============================================================================
 
 class DataFetcher:
-    """
-    Obtiene datos de múltiples APIs y los unifica
-    """
+    """Obtiene datos de múltiples APIs y los unifica"""
     
     def __init__(self):
         self.sources = {
@@ -131,16 +155,6 @@ class DataFetcher:
                 "url": "https://newsdata.io/api/1/latest",
                 "api_key": "pub_ac540cfd003d484fbb9f4fd2a1e69aef",
                 "weight": 0.6
-            },
-            "opensky": {
-                "url": "https://opensky-network.org/api/states/all",
-                "api_key": None,
-                "weight": 0.2
-            },
-            "openmeteo": {
-                "url": "https://api.open-meteo.com/v1/forecast",
-                "api_key": None,
-                "weight": 0.2
             }
         }
     
@@ -171,44 +185,54 @@ class DataFetcher:
             logger.error(f"NewsData error: {e}")
         return events
     
-    def fetch_flights(self, lat: float, lon: float) -> List[Dict[str, Any]]:
-        """Obtiene vuelos cerca de coordenadas"""
-        # TODO: Implementar OpenSky
-        return []
-    
-    def fetch_weather(self, lat: float, lon: float) -> Dict[str, Any]:
-        """Obtiene clima actual"""
-        # TODO: Implementar Open-Meteo
-        return {}
+    def fetch_mock_data(self) -> List[Dict[str, Any]]:
+        """Mock data for testing"""
+        return [
+            {
+                "source": "mock",
+                "title": "Port congestion in Rotterdam",
+                "description": "High container volumes causing delays",
+                "text": "port congestion rotterdam delays",
+                "published": datetime.now().isoformat(),
+                "country": "NL"
+            },
+            {
+                "source": "mock",
+                "title": "Weather alert: Storm approaching Singapore",
+                "description": "Tropical storm warning",
+                "text": "storm singapore weather alert",
+                "published": datetime.now().isoformat(),
+                "country": "SG"
+            }
+        ]
 
 # ============================================================================
-# 4. MOTOR DE ALERTAS - UNIFICA TODO
+# 5. MOTOR DE ALERTAS
 # ============================================================================
 
 class AlertEngine:
-    """
-    Combina datos de múltiples fuentes y genera alertas priorizadas
-    """
+    """Combina datos de múltiples fuentes y genera alertas priorizadas"""
     
     def __init__(self):
         self.fetcher = DataFetcher()
         self.scorer = RiskScorer()
     
     def get_alerts(self, hq_name: str, lat: float = None, lon: float = None) -> Dict[str, Any]:
-        """
-        Obtiene alertas para una sede o coordenadas
-        """
+        """Obtiene alertas para una sede o coordenadas"""
         cache_key = f"alerts_{hq_name}_{lat}_{lon}"
         if cache_key in INCIDENTS_CACHE:
             cache = INCIDENTS_CACHE[cache_key]
             if (time.time() - cache["timestamp"]) < CACHE_DURATION:
                 return cache["data"]
         
-        # 1. Configurar HQ
+        # Configurar HQ
         hq_locations = {
-            "roterdam": {"lat": 51.92, "lon": 4.47, "range": 5.0, "countries": "nl,be,de"},
+            "rotterdam": {"lat": 51.92, "lon": 4.47, "range": 5.0, "countries": "nl,be,de"},
             "shanghai": {"lat": 31.23, "lon": 121.47, "range": 4.0, "countries": "cn"},
             "beirut": {"lat": 33.89, "lon": 35.50, "range": 4.0, "countries": "lb,il,ps,sy,jo"},
+            "houston": {"lat": 29.76, "lon": -95.37, "range": 4.0, "countries": "us"},
+            "singapore": {"lat": 1.29, "lon": 103.86, "range": 3.0, "countries": "sg"},
+            "tokyo": {"lat": 35.68, "lon": 139.76, "range": 3.0, "countries": "jp"},
         }
         
         if hq_name and hq_name in hq_locations:
@@ -217,27 +241,29 @@ class AlertEngine:
             user_lat, user_lon = hq["lat"], hq["lon"]
         elif lat and lon:
             hq = {"lat": lat, "lon": lon, "range": 3.0}
-            countries = "us,gb,fr,de"  # Default
+            countries = "us,gb,fr,de"
             user_lat, user_lon = lat, lon
         else:
             return {"status": "error", "message": "Se necesita HQ o coordenadas"}
         
-        # 2. Obtener datos de todas las fuentes
+        # Obtener datos
         logger.info(f"🔍 Buscando alertas para {hq_name or f'{lat},{lon}'}")
-        
-        # 2a. Noticias
         news_events = self.fetcher.fetch_news(countries)
-        logger.info(f"📰 {len(news_events)} noticias procesadas")
         
-        # 3. Procesar y puntuar eventos
+        # Si no hay noticias, usar mock
+        if not news_events:
+            logger.warning("No news fetched, using mock data")
+            news_events = self.fetcher.fetch_mock_data()
+        
+        logger.info(f"📰 {len(news_events)} eventos procesados")
+        
+        # Procesar y puntuar
         scored_events = []
         for event in news_events:
-            # Geolocalizar básica
             location = self._geolocate(event)
             if location["type"] == "unknown":
                 continue
             
-            # Calcular score
             event["lat"] = location["lat"]
             event["lon"] = location["lon"]
             event["infrastructure"] = location["matched"]
@@ -246,43 +272,48 @@ class AlertEngine:
             score = self.scorer.score_event(event, hq)
             event["risk_score"] = score
             
-            if score >= 30:  # Solo eventos con score significativo
+            if score >= 10:  # Incluir más eventos para pruebas
                 scored_events.append(event)
         
-        # 4. Ordenar por score (mayor riesgo primero)
         scored_events.sort(key=lambda x: x["risk_score"], reverse=True)
         
-        # 5. Construir respuesta
+        # Construir respuesta con risk levels
+        events_with_levels = []
+        for event in scored_events[:15]:
+            score = event.get("risk_score", 0)
+            events_with_levels.append({
+                **event,
+                "risk_level": get_risk_level(score),
+                "risk_color": get_risk_color(score)
+            })
+        
         response = {
             "status": "success",
             "location": {"name": hq_name or "custom", "lat": user_lat, "lon": user_lon},
             "summary": {
                 "total_alerts": len(scored_events),
                 "critical": sum(1 for e in scored_events if e["risk_score"] >= 70),
-                "warning": sum(1 for e in scored_events if 40 <= e["risk_score"] < 70),
-                "info": sum(1 for e in scored_events if 30 <= e["risk_score"] < 40),
+                "high": sum(1 for e in scored_events if 50 <= e["risk_score"] < 70),
+                "medium": sum(1 for e in scored_events if 30 <= e["risk_score"] < 50),
+                "low": sum(1 for e in scored_events if e["risk_score"] < 30),
                 "top_threat": scored_events[0]["title"] if scored_events else None,
                 "updated": datetime.now().isoformat()
             },
-            "events": scored_events[:10],  # Top 10
+            "events": events_with_levels[:10],
             "metadata": {
                 "sources_used": ["newsdata"],
                 "total_scored": len(scored_events),
-                "threshold": 30
+                "threshold": 10
             }
         }
         
-        # Cache
         INCIDENTS_CACHE[cache_key] = {"timestamp": time.time(), "data": response}
         return response
     
     def _geolocate(self, event: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Geolocaliza un evento buscando infraestructura crítica mencionada
-        """
+        """Geolocaliza un evento buscando infraestructura crítica mencionada"""
         text = event.get("text", "").lower()
         
-        # 1. Buscar en infraestructura crítica
         for name, info in CRITICAL_ASSETS.items():
             if name.replace("_", " ") in text or name in text:
                 return {
@@ -293,7 +324,6 @@ class AlertEngine:
                     "confidence": "high"
                 }
         
-        # 2. Buscar países mencionados
         country_map = {
             "ukraine": [49.99, 36.23], "russia": [55.75, 37.62],
             "lebanon": [33.89, 35.50], "syria": [33.51, 36.29],
@@ -315,7 +345,7 @@ class AlertEngine:
         return {"lat": 0, "lon": 0, "matched": "unknown", "type": "unknown", "confidence": "low"}
 
 # ============================================================================
-# 5. INTERFAZ PARA FRONTEND (SIMPLE)
+# 6. INTERFAZ PARA FRONTEND
 # ============================================================================
 
 engine = AlertEngine()
@@ -329,26 +359,14 @@ def get_incidents_by_coords(lat: float, lon: float, radius: float = 3.0) -> Dict
     return engine.get_alerts(None, lat, lon)
 
 # ============================================================================
-# 6. PRUEBA
+# 7. PRUEBA
 # ============================================================================
 
 if __name__ == "__main__":
     print("=" * 60)
     print("🚢 LOGISECURE - SISTEMA DE ALERTAS LOGÍSTICAS v2.0")
-    print("🏗️ Multi-fuente | Puntuación de Riesgo | Infraestructura Crítica")
     print("=" * 60)
     
-    # Prueba con Rotterdam
     print("\n📍 ROTTERDAM:")
-    result = get_incidents_by_hq("roterdam")
-    print(json.dumps(result, indent=2))
-    
-    # Prueba con Shanghai
-    print("\n📍 SHANGHAI:")
-    result = get_incidents_by_hq("shanghai")
-    print(json.dumps(result, indent=2))
-    
-    # Prueba con Beirut
-    print("\n📍 BEIRUT:")
-    result = get_incidents_by_hq("beirut")
+    result = get_incidents_by_hq("rotterdam")
     print(json.dumps(result, indent=2))
