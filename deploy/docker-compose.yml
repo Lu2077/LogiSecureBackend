@@ -1,8 +1,19 @@
-<<<<<<< HEAD
 # deploy/docker-compose.yml
-# Frontend removed - Backend only
+# ==============================================================================
+# LOGISECURE AI - LOCAL / ON-PREMISE ORCHESTRATION
+#
+# One command from the repository root boots the whole stack:
+#   docker compose -f deploy/docker-compose.yml up --build
+#
+# Backend will be live at  http://localhost:8000  (interactive docs at /docs)
+# ==============================================================================
+
+name: logisecure
 
 services:
+  # ============================================
+  # PostgreSQL Database with PostGIS
+  # ============================================
   postgres:
     image: postgis/postgis:15-3.4
     container_name: logisecure-db
@@ -24,72 +35,37 @@ services:
       timeout: 10s
       retries: 5
 
-=======
-# ==============================================================================
-# LOGISECURE AI - LOCAL / ON-PREMISE ORCHESTRATION
-#
-# One command from the repository root boots the whole stack:
-#   docker compose -f deploy/docker-compose.yml up --build
-#
-# Backend will be live at  http://localhost:8000  (interactive docs at /docs)
-# ==============================================================================
-
-name: logisecure
-
-services:
->>>>>>> 0436cee945067eb9dda6c9d62f2903ba4a7cb103
+  # ============================================
+  # Backend API - Fireworks AI
+  # ============================================
   backend:
     build:
       context: ..
       dockerfile: deploy/Dockerfile.backend
-<<<<<<< HEAD
-    container_name: logisecure-backend
-    restart: unless-stopped
-    environment:
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-logisecure}:${POSTGRES_PASSWORD:-secure_password}@postgres:5432/${POSTGRES_DB:-logisecure}
-      - GROQ_API_KEY=${GROQ_API_KEY}
-      - LLM_MODEL=${LLM_MODEL:-llama-3.1-8b-instant}
-      - LLM_TEMPERATURE=${LLM_TEMPERATURE:-0.3}
-      - DEBUG=${DEBUG:-False}
-      - USE_MOCK_DATA=${USE_MOCK_DATA:-True}
-      - ENABLE_AMD_ROCM=${ENABLE_AMD_ROCM:-False}
-      - HOST=0.0.0.0
-      - PORT=8000
-    ports:
-      - "8000:8000"
-    volumes:
-      - ./logs:/app/logs
-      - ./models:/app/models
-    depends_on:
-      postgres:
-        condition: service_healthy
-    networks:
-      - logisecure-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-networks:
-  logisecure-network:
-    driver: bridge
-
-volumes:
-  postgres_data:
-=======
     image: logisecure-backend:latest
     container_name: logisecure-backend
     ports:
       - "${PORT:-8000}:8000"
-    # API keys & flags come from backend/.env (created by scripts/setup.*).
-    # The file is optional so the stack still boots with safe defaults / mocks.
+    # API keys & flags come from backend/.env (created by scripts/setup.*)
     env_file:
       - path: ../backend/.env
         required: false
     environment:
       BACKEND_ENV: ${BACKEND_ENV:-development}
-      USE_AMD_ROCM: "False"   # Hackathon mode: inference goes through cloud APIs
+      USE_AMD_ROCM: "False"  # Hackathon mode: inference goes through cloud APIs
+      # Fireworks AI configuration
+      FIREWORKS_API_KEY: ${FIREWORKS_API_KEY:-}
+      FIREWORKS_MODEL: ${FIREWORKS_MODEL:-accounts/fireworks/models/llama-v3p1-8b-instruct}
+      FIREWORKS_BASE_URL: ${FIREWORKS_BASE_URL:-https://api.fireworks.ai/inference/v1}
+      # LLM Settings
+      LLM_TEMPERATURE: ${LLM_TEMPERATURE:-0.3}
+      LLM_MAX_TOKENS: ${LLM_MAX_TOKENS:-500}
+      # Server
+      HOST: 0.0.0.0
+      PORT: 8000
+      DEBUG: ${DEBUG:-True}
+      CONFIDENCE_THRESHOLD: ${CONFIDENCE_THRESHOLD:-0.7}
+      USE_MOCK_DATA: ${USE_MOCK_DATA:-True}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
@@ -97,9 +73,16 @@ volumes:
       timeout: 5s
       start_period: 10s
       retries: 3
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - logisecure-network
 
-  # ── Frontend (React/Vite) ────────────────────────────────────────────────
-  # The frontend/ directory does not exist yet. When it lands, uncomment:
+  # ============================================
+  # Frontend (React/Vite) - Optional
+  # ============================================
+  # Uncomment when frontend is ready:
   #
   # frontend:
   #   build:
@@ -111,8 +94,12 @@ volumes:
   #   depends_on:
   #     backend:
   #       condition: service_healthy
+  #   networks:
+  #     - logisecure-network
 
-  # ── Production target only (AMD ROCm local inference) ───────────────────
+  # ============================================
+  # Production target only (AMD ROCm local inference)
+  # ============================================
   # Requires AMD kernel drivers on the host; see README before enabling.
   #
   # logisecure-agent:
@@ -125,4 +112,16 @@ volumes:
   #     - "seccomp=unconfined"
   #   volumes:
   #     - ../:/workspace
->>>>>>> 0436cee945067eb9dda6c9d62f2903ba4a7cb103
+
+# ============================================
+# Networks
+# ============================================
+networks:
+  logisecure-network:
+    driver: bridge
+
+# ============================================
+# Volumes
+# ============================================
+volumes:
+  postgres_data:
