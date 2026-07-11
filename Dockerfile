@@ -25,7 +25,8 @@ RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy requirements and install
-COPY backend/requirements.txt /tmp/requirements.txt
+COPY requirements.txt /tmp/requirements.txt
+COPY requirements-ai.txt /tmp/requirements-ai.txt
 RUN pip install -r /tmp/requirements.txt
 
 # Copy requirements-ai and install
