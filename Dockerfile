@@ -44,9 +44,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 RUN groupadd --system logisecure && useradd --system --gid logisecure --no-create-home logisecure
 
 COPY --from=builder /opt/venv /opt/venv
-COPY --chown=logisecure:logisecure backend/ /app/backend/
+COPY --chown=logisecure:logisecure . /app/
 
-WORKDIR /app/backend
+WORKDIR /app
 USER logisecure
 
 EXPOSE 8000
@@ -65,4 +65,4 @@ ENV DEBUG="False"
 ENV CONFIDENCE_THRESHOLD="0.7"
 ENV USE_MOCK_DATA="True"
 
-CMD ["sh", "-c", "PYTHONPATH=/app uvicorn backend.main:app --host 0.0.0.0 --port ${PORT}"]
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT}"]
