@@ -14,6 +14,9 @@ from typing import Optional
 # CONFIGURATION
 # ============================================
 from config import settings, get_settings, get_cors_origins
+settings.USE_MOCK_DATA = "True"
+settings.DEBUG = True
+
 
 # ============================================
 # API IMPORTS - All traffic modules
@@ -62,8 +65,8 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=get_cors_origins(),
-    allow_credentials=True,
+    allow_origins=["*"], # <--- Forzamos un asterisco para permitir que Vercel se conecte sin trabas
+    allow_credentials=False, # <-- OJO: Al usar "*" debes cambiar True por False por seguridad de FastAPI
     allow_methods=["*"],
     allow_headers=["*"],
 )
