@@ -13,7 +13,7 @@ from typing import Optional
 # ============================================
 # CONFIGURATION
 # ============================================
-from backend.config import settings, get_settings, get_cors_origins
+from config import settings, get_settings, get_cors_origins
 
 # ============================================
 # API IMPORTS - All traffic modules
