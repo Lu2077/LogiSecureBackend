@@ -65,4 +65,4 @@ ENV DEBUG="False"
 ENV CONFIDENCE_THRESHOLD="0.7"
 ENV USE_MOCK_DATA="True"
 
-CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT}"]
+CMD ["sh", "-c", "PYTHONPATH=/app uvicorn backend.main:app --host 0.0.0.0 --port ${PORT}"]
