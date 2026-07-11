@@ -28,6 +28,10 @@ ENV PATH="/opt/venv/bin:$PATH"
 COPY backend/requirements.txt /tmp/requirements.txt
 RUN pip install -r /tmp/requirements.txt
 
+# Copy requirements-ai and install
+COPY backend/requirements-ai.txt /tmp/requirements-ai.txt
+RUN pip install -r /tmp/requirements-ai.txt
+
 # ---------- Stage 2: minimal runtime image ----------
 FROM python:3.12-slim AS runtime
 
@@ -52,9 +56,9 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD python -c "import urllib.request,os; urllib.request.urlopen(f'http://127.0.0.1:{os.environ.get(\"PORT\",\"8000\")}/health', timeout=3)" || exit 1
 
 # Environment variables for Fireworks AI
-ENV FIREWORKS_API_KEY=""
-ENV FIREWORKS_MODEL="accounts/fireworks/models/llama-v3p1-8b-instruct"
-ENV FIREWORKS_BASE_URL="https://api.fireworks.ai/inference/v1"
+#ENV FIREWORKS_API_KEY=fw_BKbdwA3hHumdmnXzjSSoTh
+#ENV FIREWORKS_MODEL="accounts/fireworks/models/llama-v3p1-8b-instruct"
+#ENV FIREWORKS_BASE_URL="https://api.fireworks.ai/inference/v1"
 ENV LLM_TEMPERATURE="0.3"
 ENV LLM_MAX_TOKENS="500"
 ENV DEBUG="False"
