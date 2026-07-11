@@ -13,6 +13,8 @@
 langgraph>=0.0.65
 langchain-core>=0.2.7
 llama-index>=0.10.45
+# FIREWORKS AI INTEGRATION
+langchain-fireworks>=0.1.0
 
 # 🧠 LOCAL GGUF INFERENCE (AMD ROCm production target only)
 # llama-cpp-python>=0.2.77
