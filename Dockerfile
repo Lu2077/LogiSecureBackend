@@ -26,11 +26,10 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy requirements and install
 COPY requirements.txt /tmp/requirements.txt
-COPY requirements-ai.txt /tmp/requirements-ai.txt
 RUN pip install -r /tmp/requirements.txt
 
-# Copy requirements-ai and install
-COPY backend/requirements-ai.txt /tmp/requirements-ai.txt
+# CORRECCIÓN 2: Eliminar la palabra 'backend/' y copiar requisitos de IA planos
+COPY requirements-ai.txt /tmp/requirements-ai.txt
 RUN pip install -r /tmp/requirements-ai.txt
 
 # ---------- Stage 2: minimal runtime image ----------
@@ -56,6 +55,7 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD python -c "import urllib.request,os; urllib.request.urlopen(f'http://127.0.0.1:{os.environ.get(\'PORT\',\'8000\')}/health', timeout=3)" || exit 1
 
+
 # Environment variables for Fireworks AI
 #ENV FIREWORKS_API_KEY=fw_BKbdwA3hHumdmnXzjSSoTh
 #ENV FIREWORKS_MODEL="accounts/fireworks/models/llama-v3p1-8b-instruct"
@@ -66,4 +66,5 @@ ENV DEBUG="False"
 ENV CONFIDENCE_THRESHOLD="0.7"
 ENV USE_MOCK_DATA="True"
 
+# Comando definitivo: Arranca limpiamente desde la raíz /app
 CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT}"]
