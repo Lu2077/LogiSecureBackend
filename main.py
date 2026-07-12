@@ -339,6 +339,8 @@ async def track_shipment_by_industry_id(tracking_id: str):
         land_result = get_asset_tracking_by_id(id_upper)
         return land_result
 
+
+
 # ============================================
 # MAIN ENTRY POINT
 # ============================================
