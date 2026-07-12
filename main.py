@@ -3,7 +3,8 @@
 LogiSecure AI - FastAPI Application
 Unified Enterprise Router API running securely on AMD local infrastructure
 """
-
+import sys
+import os
 import time
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -47,6 +48,23 @@ from logger import logger
 # DATABASE
 # ============================================
 from ai_agents.database import ENTERPRISE_SHIPMENTS
+
+# ============================================
+# DIRECTORY ISSUES FOR BACKEND PRODUCTION REPO ONLY
+# ============================================
+
+# OBLIGAMOS A PYTHON A RECONOCER LA RAÍZ Y SUS SUBCARPETAS
+root_path = os.path.dirname(os.path.abspath(__file__))
+if root_path not in sys.path:
+    sys.path.insert(0, root_path)
+
+# AGREGAMOS EL DIRECTORIO DE LA API Y AGENTES AL MAPA GLOBAL
+api_path = os.path.join(root_path, "api")
+ai_agents_path = os.path.join(root_path, "ai_agents")
+if api_path not in sys.path:
+    sys.path.append(api_path)
+if ai_agents_path not in sys.path:
+    sys.path.append(ai_agents_path)
 
 # ============================================
 # CREATE APP
